@@ -1,0 +1,73 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    padding: 20px;
+    max-width: 600px;
+    margin: auto;
+    background-color: #f4f4f4;
+}
+h1 {
+    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25em;
+    line-height: 2; /* <- important */
+    font-size: 2rem; /* or your desired size */
+}
+
+h1 img {
+    height: .7em;
+    vertical-align: middle; /* try text-bottom if needed */
+    box-shadow: -0.75px 0.75px 7px rgba(0, 0, 0, 0.2);
+}
+
+h1 span {
+    margin: 0;
+    display: inline-block;
+}
+
+#linkContainer{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5em;
+    margin-top: 20px;
+}
+h4 {
+    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 1em;
+}
+
+h4 img{
+    height: 0.8em;
+    vertical-align: middle;
+    box-shadow: -0.75px 0.75px 3px rgba(0, 0, 0, 0.2);
+}
+
+h4 a{
+    text-decoration: none;
+    color: #007bff;
+    font-weight: bold;
+}
+h4 a p{
+    display: inline;
+    vertical-align: middle;
+    margin: 0;
+    padding: 0;
+}
+#addproductBtn{
+    background-color: #e9e9e9;
+    color: #666; 
+    padding: 10px 15px; 
+    border: none; 
+    border-radius: 4px; 
+    cursor: pointer;
+}
+#addproductBtn:hover{
+    background-color: #007bff;
+    color: white; 
+}

@@ -1,0 +1,320 @@
+<?php
+ini_set('default_charset',  'UTF-8');
+ini_set('error_log', 'error.log');
+$dbConnection = new PDO('mysql:dbname=tric4calc;host=127.0.0.1;', 'root', '***REMOVED***');
+$dbConnection->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+$dbConnection->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_WARNING);
+
+$dbConnectionTric = new PDO('mysql:dbname=***REMOVED***;host=***REMOVED***;', '***REMOVED***', '***REMOVED***');
+$dbConnectionTric->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+$dbConnectionTric->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
+
+#require 'vendor/autoload.php';
+require_once 'sp_api_functions.php';
+require_once 'marketplaces.php';
+require_once 'AmazonFeedBuilder.php';
+require_once 'ManoManoFeedBuilder.php';
+$AmazonBuilder = new AmazonFeedBuilder("A6F5BRV91OMPP", "2.0", "de_DE");
+$ManoManobuilderDE = new ManoManoFeedBuilder("cxkiqBhdGZUBLpWPOyyPDMPs67iZvMJp", 7877481);
+$ManoManobuilderFR = new ManoManoFeedBuilder("Hj8MyH9mXKy2Xv7ITTqeqrNkRbxro2Nm", 7877481);
+
+
+
+foreach ($marketplaces as $key => $value) {
+    $marketplaceId = $value['marketplaceId'];
+    $dbName = $value['dbName'];
+    $currencyCode = $value['currencyCode'];
+    $countrycode = $key;
+
+    echo "<h3>---  Marketplace: $key ---</h3>";
+
+    $statement = $dbConnection->prepare("SELECT DISTINCT ASIN FROM tric4calc.Preisgrenzen WHERE min_preis IS NOT NULL AND min_preis != '' AND Land = '$countrycode'");
+    $statement->execute();
+    $asins = $statement->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($asins as $key => $asin) {
+        $asin = $asin["ASIN"];
+        $statement = $dbConnection->prepare("SELECT sku FROM tric4calc.Artikel WHERE ASIN = '$asin'");
+        $statement->execute();
+        $result = $statement->fetch(PDO::FETCH_ASSOC);
+        $sku = $result["sku"];
+        $preis = processAsin($asin);
+        $quantity = getQuantityBySku($sku, "A6F5BRV91OMPP", $marketplaceId);
+        $AmazonBuilder->addHandlingTime($sku, "0", $quantity);
+        if($preis == null){
+            echo "Kein neuer Preis für ASIN $asin. gesetzt <br>\r\n";
+            continue;
+        } 
+        if(updateAmazonProductPrice( $sku, $preis,  "PRODUCT", $marketplaceId, $currencyCode)){
+            echo "Preis für SKU $sku wurde erfolgreich auf $preis gesetzt.<br>\r\n";
+            $AmazonBuilder->addBusinessPrice($sku,  "EUR", $marketplaceId, ((float)($preis-0.01)));
+            if($marketplaceId == "A1PA6795UKMFR9"){
+                $ManoManobuilderDE->addOffer($sku, ($preis));
+            } elseif($marketplaceId == "A13V1IB3VIYZZH"){
+                $ManoManobuilderFR->addOffer($sku, ($preis));
+            }
+        } else{
+            echo "Fehler beim Setzen des Preises für SKU $sku.<br>\r\n";
+        }
+    }
+    
+
+}
+
+$feedContent = $AmazonBuilder->build();
+echo "<br>\r\nFeed Content:<br>\r\n<pre>" . htmlspecialchars($feedContent) . "</pre><br>\r\n";
+$doc = createFeedDocument();
+$docId = $doc["feedDocumentId"];
+$uploadUrl = $doc["url"];
+uploadFeedDocument($uploadUrl, $feedContent);
+$allMarketplaceIds = array_column($marketplaces, 'marketplaceId');
+$feed = createFeed($docId, $allMarketplaceIds);
+$feedId = $feed["feedId"];
+echo json_encode(["feedId" => $feedId]);
+
+$response = $ManoManobuilderDE->send();
+print_r($response);
+$response = $ManoManobuilderFR->send();
+print_r($response);
+
+function processAsin($asin) {
+    echo "<br>\r\n<br>\r\n---  ASIN: $asin ---<br>\r\n";
+
+    global $dbConnection;
+    global $marketplaceId;
+    global $dbName;
+    global $currencyCode;
+    global $countrycode;
+
+
+    $abstand_unten = 0.05; 
+    $step_size = 0.05;
+    $action = "update";
+
+    $produktDataStmt = $dbConnection->prepare("SELECT ID, SKU FROM tric4calc.Artikel WHERE asin = :ASIN LIMIT 1");
+    $produktDataStmt->execute([':ASIN' => $asin]);
+    $produktData = $produktDataStmt->fetch(PDO::FETCH_ASSOC);
+
+    $produktDataStmtGrenzen = $dbConnection->prepare("SELECT min_preis, max_preis, stepsize_small, stepsize_big FROM tric4calc.Preisgrenzen WHERE ASIN = :ASIN AND Land = '$countrycode' LIMIT 1");
+    $produktDataStmtGrenzen->execute([':ASIN' => $asin]);
+    $produktDataGrenzen = $produktDataStmtGrenzen->fetch(PDO::FETCH_ASSOC);
+
+    if (!$produktData) {
+        echo "Error: Produktdaten nicht gefunden für ASIN $asin.<br>\r\n";
+        return null;
+    }
+    $produktid = $produktData['ID'];
+    $sku = $produktData['SKU'];
+    $min_preis = filter_var($produktDataGrenzen['min_preis'], FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE) ?? 0.01;
+    $max_preis = filter_var($produktDataGrenzen['max_preis'], FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE) ?? 1000000.00;
+    $stepsize_small = filter_var($produktDataGrenzen['stepsize_small'], FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE) ?? 0.01;
+    $stepsize_big = filter_var($produktDataGrenzen['stepsize_big'], FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE) ?? 0.1;
+    if($max_preis == 0){
+        $max_preis = 1000000.00;
+    }
+    echo "ProduktID: $produktid, SKU: $sku, MinPreis: $min_preis, MaxPreis: $max_preis<br>\r\n";  
+
+    $prevStateStmt = $dbConnection->prepare("SELECT eigenerPreis, niedrigsterPreis, buyboxpreis, action, counter FROM tric4calc.$dbName WHERE produktid = :produktid ORDER BY datum DESC LIMIT 1");
+    $prevStateStmt->execute([':produktid' => $produktid]);
+    $previousState = $prevStateStmt->fetch(PDO::FETCH_ASSOC);
+    $eigenerPreis_alt = filter_var($previousState['eigenerPreis'] ?? null, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
+    $niedrigsterPreis_alt = filter_var($previousState['niedrigsterPreis'] ?? null, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
+    $buyboxpreis_alt = filter_var($previousState['buyboxpreis'] ?? null, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
+    $action_alt = $previousState['action'] ?? null;
+    $counter = $previousState['counter'] ?? null;
+    echo "Previous State - Own: $eigenerPreis_alt, Lowest: $niedrigsterPreis_alt, BB: $buyboxpreis_alt, Action: $action_alt, Counter: $counter<br>\r\n";
+
+    $data = callItemsAPI($asin,  $marketplaceId);
+    if (!$data) {
+        error_log("Error: API call failed for ASIN $asin. Data is null.");
+         echo "Error: Fehler beim Abrufen der API Data für ASIN $asin.<br>\r\n";
+         return null;
+    }
+    $buyboxpreis_raw = getInfoByASIN($data, "buyboxpreis");
+    $niedrigsterPreis_raw = getLowestPrice($data);
+    $eigenerPreis_raw = getOwnPriceBySku($sku,  $marketplaceId);
+    $isWinner = IsBuyBoxWinner(getInfoByASIN($data, "offers"));
+
+    $buyboxpreis = filter_var($buyboxpreis_raw, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
+    $niedrigsterPreis = filter_var($niedrigsterPreis_raw, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
+    $eigenerPreis = filter_var($eigenerPreis_raw, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
+    echo "Eigener Preis: $eigenerPreis, Niedrigster Preis: $niedrigsterPreis, BB Preis: $buyboxpreis, Is Winner: " . ($isWinner ? 'Ja' : 'Nein') . "<br>\r\n";
+
+    $initStmt = $dbConnection->prepare("SELECT * FROM tric4calc.$dbName WHERE produktid = :produktid ORDER BY datum DESC LIMIT 1");
+    $initStmt->execute([':produktid' => $produktid]);
+    $initResult = $initStmt->fetch(PDO::FETCH_ASSOC);
+    if($initResult == null){
+        error_log("Info: Initial state not found for ASIN $asin. Setting initial values.");
+        $stmtBuybox = $dbConnection->prepare(
+            "INSERT INTO tric4calc.$dbName (produktid, eigenerPreis, niedrigsterPreis, buyboxPreis, datum, action, isWinner)
+             VALUES (:produktid, :eigenerPreis, :niedrigsterPreis, :buyboxPreis, NOW(), 'init', :isWinner)"
+        );
+        $stmtBuybox->bindParam(':produktid', $produktid, PDO::PARAM_INT);
+        $stmtBuybox->bindValue(':eigenerPreis', $eigenerPreis, $eigenerPreis !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmtBuybox->bindValue(':niedrigsterPreis', $niedrigsterPreis, $niedrigsterPreis !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmtBuybox->bindValue(':buyboxPreis', $buyboxpreis, $buyboxpreis !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmtBuybox->bindValue(':isWinner', $isWinner, $isWinner !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmtBuybox->execute();
+        return null;
+    }
+
+    if ($eigenerPreis === null) {
+        echo "Error: Eigener Preis konnte nicht festgestellt werden. Kein neuer Preis wird berechnet.<br>\r\n";
+        return null;
+    }
+
+    logCurrentState($dbConnection, $produktid, $eigenerPreis, $niedrigsterPreis, $buyboxpreis, $counter, $isWinner);
+    
+    $neuerPreis = null;
+    echo "<script>console.log('Counter pre calc: $counter');</script>";
+
+    if($eigenerPreis > 10){
+        $step_size = $stepsize_big;
+    } else {
+        $step_size = $stepsize_small;
+    }
+
+    if ($isWinner){
+        if($counter != 0){
+            if($counter == 3 && ($niedrigsterPreis - ($step_size * 2)) > $eigenerPreis ){
+                $counter = 4;
+                $neuerPreis = $eigenerPreis + $step_size;
+            }
+            if($counter == 4){
+                $neuerPreis = $eigenerPreis + $step_size;
+            }else {
+                $neuerPreis = $eigenerPreis;
+            }
+        } else {
+            $neuerPreis = $niedrigsterPreis  - $step_size;
+        }
+    } else{
+        if($buyboxpreis == null){
+            if($counter == 4){
+                $neuerPreis = $eigenerPreis - $step_size;
+                $counter = 5;
+            } else {
+                $neuerPreis = $eigenerPreis;
+                try{
+                    $neuerPreis = getFeaturedOfferExpectedPriceBySKU($sku, $marketplaceId) ?? $eigenerPreis;
+                } catch (Exception $e) {}
+                if($neuerPreis != $eigenerPreis){
+                    $counter = 4;
+                }
+            }
+        }elseif($counter == 0){
+            $neuerPreis = $buyboxpreis;
+            $counter = 1;
+        }elseif ($counter == 1){
+            $counter = 2;
+            $neuerPreis = $niedrigsterPreis  + $step_size;
+        } elseif($counter == 2){
+            $counter = 3;
+            $neuerPreis = $niedrigsterPreis  - $step_size;
+        } elseif($counter == 3) {
+            if($eigenerPreis < $niedrigsterPreis){
+                $neuerPreis = $eigenerPreis - $step_size;
+            } else{
+                $counter = 0;
+                $neuerPreis = $niedrigsterPreis  - $step_size;
+            }
+        } elseif($counter == 4){
+            $neuerPreis = $eigenerPreis - $step_size;
+            $counter = 6;
+        } elseif($counter == 5){
+            $neuerPreis = $eigenerPreis - $step_size;
+            $counter = 4;
+        }elseif($counter = 6){
+            $neuerPreis = $niedrigsterPreis - $step_size;
+            $counter = 3;
+        }else{
+            echo "Error: Counter hat Wert $counter (Ungültig!)<br>\r\n";
+            return null;
+        }
+    }
+    echo "<script>console.log('Counter post calc: $counter');</script>";
+
+    if ($neuerPreis !== null) {
+        $neuerPreis = min($neuerPreis, $max_preis);
+         echo "Applying Max Price ($max_preis): $neuerPreis<br>\r\n";
+        $neuerPreis = max($min_preis, $neuerPreis);
+        echo "Applying Min Price ($min_preis): $neuerPreis<br>\r\n";
+
+        $neuerPreis = round($neuerPreis, 2);
+        echo "Final Calculated Price (after constraints & rounding): $neuerPreis<br>\r\n";
+
+       
+        logPlannedAction($dbConnection, $produktid, $neuerPreis, $niedrigsterPreis, $buyboxpreis, $action, $counter, $isWinner);
+        echo "DB Logging: Scheduled '$action' action with new price $neuerPreis and counter $counter.<br>\r\n";
+        
+    } else {
+        echo "Error: In der Berechnung ist ein Fehler aufgetreten. Der Preis wurde nicht aktualisiert.<br>\r\n";
+        return $eigenerPreis ?? null; 
+    }
+
+    return $neuerPreis;
+}
+
+function logCurrentState($dbConnection, $produktid, $eigenerPreis, $niedrigsterPreis, $buyboxPreis, $counter, $isWinner) {
+    global $dbName;
+    try {
+        $isWinnerString = null;
+        if($isWinner){
+            $isWinnerString = "Ja";
+        } else{
+            $isWinnerString = "Nein";
+        }
+        $stmt = $dbConnection->prepare(
+            "INSERT INTO `$dbName` (`produktid`, `eigenerPreis`, `niedrigsterPreis`, `buyboxPreis`, `datum`, `action`, `counter` , `isWinner` )
+             VALUES (:produktid, :eigenerPreis, :niedrigsterPreis, :buyboxPreis, current_timestamp(), :action, :counter, :isWinner )"
+        );
+        $stmt->execute([
+            ':produktid' => $produktid,
+            ':eigenerPreis' => $eigenerPreis,
+            ':niedrigsterPreis' => $niedrigsterPreis, 
+            ':buyboxPreis' => $buyboxPreis, 
+            ':action' => "document", 
+            ":counter" => $counter,
+            ":isWinner" => $isWinnerString
+        ]);
+    } catch (PDOException $e) {
+        echo "DB Log Error (document): " . $e->getMessage() . "<br>\r\n";
+    }
+}
+
+/**
+ * Helper function to log the planned update action.
+ */
+function logPlannedAction($dbConnection, $produktid, $neuerPreis, $niedrigsterPreisContext, $buyboxPreisContext, $action, $counter, $isWinner) {
+    global $dbName;
+    try {
+        date_default_timezone_set('Europe/Berlin');
+        $futureTimestamp = date('Y-m-d H:i:s', time() + 10);
+        $isWinnerString = null;
+        if($isWinner){
+            $isWinnerString = "Ja";
+        } else{
+            $isWinnerString = "Nein";
+        }
+
+        $stmt = $dbConnection->prepare(
+            "INSERT INTO `$dbName` (`produktid`, `eigenerPreis`, `niedrigsterPreis`, `buyboxPreis`, `datum`, `action`, `counter` , `isWinner` )
+             VALUES (:produktid, :eigenerPreis, :niedrigsterPreis, :buyboxPreis, :datum, :action, :counter, :isWinner )"
+        );
+        $stmt->execute([
+            ':produktid' => $produktid,
+            ':eigenerPreis' => $neuerPreis,
+            ':niedrigsterPreis' => $niedrigsterPreisContext, 
+            ':buyboxPreis' => $buyboxPreisContext, 
+            ':datum' => $futureTimestamp, 
+            ':action' => $action ,
+            ":counter" => $counter,
+            ":isWinner" => $isWinnerString
+        ]);
+        echo "<script>console.log('Counter: $counter');</script>";
+    } catch (PDOException $e) {
+        echo "DB Log Error (action): " . $e->getMessage() . "<br>\r\n";
+    }
+}
+
+?>

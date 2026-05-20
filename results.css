@@ -1,0 +1,274 @@
+/* === From original results.css === */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    padding: 20px;
+    margin: auto;
+    background-color: #f4f4f4;
+    max-width: 90%; /* Consider adjusting if needed */
+}
+
+h3 {
+    margin-top: 0;
+    margin-bottom: 15px; /* Added consistent bottom margin */
+}
+
+.asin-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin-bottom: 20px; /* Added space below header */
+}
+
+.left-container {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.product-info {
+    /* font-family: Arial, sans-serif; */ /* Usually inherited from body */
+    margin-bottom: 20px; /* Add space below product info */
+}
+
+.price-fields {
+    display: flex;
+    flex-wrap: wrap; /* Allow wrapping if needed */
+    gap: 10px; /* Use gap for spacing */
+}
+
+.price-field {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px; /* Adjusted padding slightly */
+    background-color: #e9e9e9;
+    border-radius: 5px;
+    text-align: center;
+    text-decoration: none;
+    /* margin-right: 10px; Removed, using gap now */
+}
+
+.price-icon {
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+}
+
+.price-value {
+    font-size: 1.1em; /* Slightly adjusted */
+    color: #2a2a2a;
+    font-weight: 500; /* Added slight weight */
+}
+
+#addproductBtn { /* Style specific button */
+    background-color: #e9e9e9;
+    color: #666;
+    border: 1px solid #ccc; /* Added subtle border */
+}
+
+#addproductBtn:hover {
+    background-color: #007bff; /* Use base button hover color */
+    color: white;
+    border-color: #0056b3;
+}
+
+.price-history-graph {
+    max-width: 100%;
+    margin: 20px auto;
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+canvas#priceChart { /* Target canvas specifically */
+    max-width: 100%;
+    display: block; /* Helps prevent extra space below */
+}
+
+/* === Styles moved from inline <style> block === */
+
+.chart-and-settings-wrapper {
+    display: flex;
+    flex-wrap: wrap; /* Allow wrapping on small screens */
+    gap: 25px; /* Space between chart and settings */
+    margin-bottom: 20px; /* Space before timespan controls */
+}
+
+.chart-container {
+    flex: 1 1 65%; /* Allow chart to grow and shrink, base width 65% */
+    min-width: 300px; /* Prevent chart becoming too small */
+    /* background-color: #fafafa; */ /* Optional: slight bg for debugging */
+}
+
+.compact-settings-form {
+    flex: 1 1 30%; /* Allow grow/shrink, base width ~30% */
+    max-width: 250px; /* Max width for the form */
+    display: flex;
+    flex-direction: column; /* Stack elements vertically */
+    gap: 12px; /* Space between input groups/button */
+    border: 1px solid #e0e0e0; /* Optional border */
+    padding: 15px;
+    border-radius: 6px;
+    background-color: #fdfdfd; /* Slightly off-white */
+    /* Remove align-items: flex-end; */
+    /* Remove height constraints if previously added */
+}
+
+/* Styling for compact controls container */
+.chart-controls-container {
+    display: flex;
+    flex-wrap: wrap;    /* Allow wrapping */
+    align-items: flex-end; /* Align items along their bottom edge */
+    gap: 15px 25px;    /* Row and Column gap */
+    padding: 10px 0;
+    border-top: 1px solid #eee;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 20px;
+}
+
+/* Styling for the timespan select/button group */
+.controls {
+    display: flex;
+    align-items: center; /* Vertically align items within this group */
+    gap: 10px;
+}
+.controls label {
+     margin-bottom: 0; /* Override default label margin if any */
+     font-weight: normal; /* Match form label style perhaps */
+     font-size: 0.9em;
+     color: #555;
+}
+/* Ensure select and button heights are similar */
+.controls select,
+.controls button {
+    padding: 6px 10px; /* Match compact button padding */
+    font-size: 0.9em;  /* Match compact button font size */
+    height: 32px; /* Explicit height - adjust as needed */
+    box-sizing: border-box;
+}
+
+.compact-settings-form .input-group {
+   display: flex;
+   flex-direction: column;
+   gap: 2px;
+}
+
+.compact-settings-form h4 {
+    margin-top: 0;
+    margin-bottom: 5px;
+    font-size: 1.1em;
+    text-align: center;
+    color: #333;
+}
+
+.compact-settings-form label {
+    font-size: 0.85em;
+    color: #444; /* Slightly darker */
+    font-weight: 500; /* Slightly bolder */
+    margin-bottom: 0;
+}
+
+.compact-settings-form input[type="number"] {
+    width: 100%; /* Take full width of form */
+    padding: 8px; /* Slightly larger padding */
+    font-size: 0.9em;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    height: auto; /* Remove fixed height */
+    box-sizing: border-box;
+}
+
+/* Input groups within the vertical form */
+.compact-settings-form .input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+ }
+
+/* Specific button style for the compact form */
+.compact-settings-form button {
+    padding: 8px 15px; /* Adjusted padding */
+    font-size: 0.95em;
+    cursor: pointer;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px; /* Slightly larger radius */
+    height: auto; /* Remove fixed height */
+    box-sizing: border-box;
+    margin-top: 5px; /* Add some space above button */
+}
+
+.compact-settings-form button:hover {
+    background-color: #0056b3;
+}
+
+.compact-settings-form .message {
+    width: 100%;
+    margin-top: 10px;
+    margin-bottom: 0; /* No extra space below */
+    box-sizing: border-box;
+    font-size: 0.9em;
+    padding: 8px 10px;
+}
+
+.message.success {
+    background-color: #d4edda;
+    color: #155724;
+    border-color: #c3e6cb;
+}
+
+.message.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border-color: #f5c6cb;
+}
+
+/* Container for the update message below controls */
+.update-message-area {
+    width: 100%;
+    margin-top: 10px; /* Space above the message */
+}
+
+/* Container for timespan controls (below chart/settings) */
+.chart-controls-container {
+    display: flex; /* Kept flex for potential future additions */
+    flex-wrap: wrap;
+    align-items: center; /* Vertically center items */
+    gap: 15px 25px;
+    padding: 10px 0;
+    border-top: 1px solid #eee;
+    margin-top: 15px; /* Ensure space above */
+    /* Removed bottom border/margin */
+}
+
+.controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.controls label {
+     margin-bottom: 0;
+     font-size: 0.9em;
+     color: #555;
+}
+.controls select,
+.controls button {
+    padding: 6px 10px;
+    font-size: 0.9em;
+    height: 32px; /* Keep explicit height for these controls */
+    box-sizing: border-box;
+}
+
+
+/* Message area below controls (for success messages) */
+.update-message-area {
+    width: 100%;
+    margin-top: 5px; /* Reduced space */
+}
+.update-message-area .message {
+    /* Inherits general .message styles */
+    margin-bottom: 0; /* No extra space needed below */
+}
