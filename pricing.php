@@ -47,7 +47,7 @@ foreach ($marketplaces as $key => $value) {
         $AmazonBuilder->addHandlingTime($sku, "0", $quantity);
         Logger::info("Bestand an Amazon übermittelt", ['sku' => $sku, 'quantity' => $quantity]);
         if ($quantity === 0 || $quantity === null) {
-            Logger::warning("Achtung: Bestand ist 0 oder leer!", ['sku' => $sku, 'quantity' => $quantity]);
+            Logger::warning("Achtung: Bestand ist 0 oder leer!", ['sku' => $sku, 'asin' => $asin, 'quantity' => $quantity]);
         }
         if($preis == null){
             echo "Kein neuer Preis für ASIN $asin. gesetzt <br>\r\n";
@@ -56,7 +56,7 @@ foreach ($marketplaces as $key => $value) {
         } 
         if(updateAmazonProductPrice( $sku, $preis,  "PRODUCT", $marketplaceId, $currencyCode)){
             echo "Preis für SKU $sku wurde erfolgreich auf $preis gesetzt.<br>\r\n";
-            Logger::info("Preis erfolgreich gesetzt", ['sku' => $sku, 'preis' => $preis, 'marketplaceId' => $marketplaceId]);
+            Logger::info("Preis erfolgreich gesetzt", ['sku' => $sku, 'asin' => $asin, 'preis' => $preis, 'marketplaceId' => $marketplaceId]);
             $AmazonBuilder->addBusinessPrice($sku,  "EUR", $marketplaceId, ((float)($preis-0.01)));
             if($marketplaceId == "A1PA6795UKMFR9"){
                 $ManoManobuilderDE->addOffer($sku, ($preis));
