@@ -1,162 +1,102 @@
-# Tricoma Pricing Script & Marketplace Feed Builder
+# Interne Entwicklerdokumentation: Tricoma Pricing Script & Feed Builder
 
-Ein umfassendes, PHP-basiertes Tool zur automatisierten Preisberechnung, Verwaltung von Preisgrenzen sowie zur Generierung von Marketplace-Feeds. Das Tool integriert sich tief in externe Marktplätze wie Amazon (via Selling Partner API) und ManoMano und unterstützt bei der Margenkontrolle und automatischen Bestands- und Preisaktualisierungen.
+> **⚠️ WICHTIGER HINWEIS:** Dieses Projekt ist **ausschließlich für die interne Firmennutzung** bestimmt. Es ist eng mit dem lokalen Tricoma ERP verzahnt und darf nicht öffentlich zugänglich gemacht werden. Das Root-Verzeichnis der Applikation liegt im internen Netzwerk unter `\\192.168.3.191\tricoma Verzeichnis TEST\Pricing Script`.
 
----
-
-## 📋 Inhaltsverzeichnis
-
-1. [Über das Projekt](#über-das-projekt)
-2. [Hauptfunktionen](#hauptfunktionen)
-3. [Technologie-Stack](#technologie-stack)
-4. [Projektstruktur](#projektstruktur)
-5. [Voraussetzungen](#voraussetzungen)
-6. [Installation & Setup](#installation--setup)
-7. [Nutzung & Workflows](#nutzung--workflows)
-8. [API Integrationen](#api-integrationen)
-9. [Fehlerbehebung und Logs](#fehlerbehebung-und-logs)
+Willkommen beim internen Pricing Script. Diese Dokumentation dient als zentraler Einstiegspunkt für Programmierer, die das System weiterentwickeln, warten oder debuggen müssen. Sie erklärt detailliert den Datenfluss, die Trigger-Punkte und das Zusammenspiel der internen Skripte.
 
 ---
 
-## 💡 Über das Projekt
+## 🧭 Inhaltsverzeichnis
 
-Dieses System wurde entwickelt, um die komplexe Preisgestaltung für verschiedene Marktplätze zu zentralisieren. Es bietet eine Benutzeroberfläche zur Überprüfung von Produktdaten, berechnet Durchschnitts- und Zielpreise und stellt sicher, dass gesetzte Preisgrenzen (Mindestpreis / Maximalpreis) eingehalten werden. Parallel erstellt es automatisch Feed-Dateien, um diese Datenbestände an Systeme wie Amazon und ManoMano zu übertragen.
-
----
-
-## 🚀 Hauptfunktionen
-
-* **Automatisierte Preisberechnung:** Dynamische Preisanpassung basierend auf aktuellen Einkaufspreisen, Durchschnittskosten und hinterlegten Margenvorgaben (`get_avg_price.php`, `get_current_price.php`).
-* **Preisgrenzen-Kontrolle:** Strikte Einhaltung von Minimum- und Maximum-Preisen pro Kanal (`get_preisgrenzen.php`).
-* **Amazon SP-API Integration:** Direkter Import von Amazon-Produktdetails sowie Update von Preisen via Amazon Selling Partner API.
-* **Feed Generierung:** Automatisierter Aufbau von Export-Feeds für externe Plattformen (`AmazonFeedBuilder.php`, `ManoManoFeedBuilder.php`).
-* **Such- und Analyse-Dashboard:** Übersichtliche Frontend-Suche zur Kontrolle von Artikelzuständen und Preisen (`search.php`, `results.php`).
-* **Umfassendes Reporting:** Zentrale Fehlererfassung und Reporting für fehlgeschlagene API-Aufrufe oder unvollständige Daten (`report.php`, `error_report.php`).
+1. [Systemarchitektur & Setup für Entwickler](#systemarchitektur--setup-für-entwickler)
+2. [Der generelle Datenfluss](#der-generelle-datenfluss)
+3. [Detaillierte Workflows: Was passiert wann?](#detaillierte-workflows-was-passiert-wann)
+4. [Dateien und ihre exakte Aufgabe](#dateien-und-ihre-exakte-aufgabe)
+5. [Debugging & Logs](#debugging--logs)
 
 ---
 
-## 🛠 Technologie-Stack
+## 🛠 Systemarchitektur & Setup für Entwickler
 
-* **Backend:** PHP (unterstützt Composer für Abhängigkeiten)
-* **Datenbank:** MySQL / MariaDB (für lokale Caching- und Mapping-Tabellen)
-* **Frontend:** HTML5, CSS3 (`style.css`, `landingpage.css`, `results.css`, `addNew.css`)
-* **APIs:** 
-  * Amazon Selling Partner API (`amzn-spapi/sdk`)
-  * AWS SDK für PHP (`aws/aws-sdk-php`)
-* **Libraries:** GuzzleHTTP (HTTP Client), Dotenv (`vlucas/phpdotenv` für Umgebungsvariablen)
+Das System fungiert als Middleware zwischen unserem Tricoma ERP-System (der "Source of Truth" für Produkt- und Bestandsdaten) und externen Marktplätzen wie Amazon und ManoMano. 
 
----
-
-## 📂 Projektstruktur
-
-Die Codebasis ist logisch in Kernfunktionen, API-Aufrufe, Frontend-Elemente und Abhängigkeiten unterteilt:
-
-```text
-/
-├── index.php / checkindex.html    # Haupt-Einstiegspunkte (Dashboards und Landingpages)
-├── db_connection.php              # Globale Datenbankverbindung
-├── composer.json                  # Definition der PHP-Paketabhängigkeiten
-│
-├── 📊 Preis-Logik (Kern des Systems)
-│   ├── pricing.php                # Hauptlogik für Preisupdates und -kalkulation
-│   ├── get_current_price.php      # Ruft den aktuellen Marktplatz/Webshop-Preis ab
-│   ├── get_avg_price.php          # Errechnet den gleitenden Durchschnittspreis (EK/VK)
-│   └── get_preisgrenzen.php       # Holt und validiert die gesetzten Min-/Max-Preise
-│
-├── 🛒 Marktplatz-Schnittstellen (Feeds)
-│   ├── marketplaces.php           # Zentrale Steuerdatei für alle Marktplätze
-│   ├── AmazonFeedBuilder.php      # Logik zur Erstellung spezifischer Amazon XML/CSV Feeds
-│   └── ManoManoFeedBuilder.php    # Logik zur Erstellung der ManoMano Händler-Feeds
-│
-├── 🔌 Amazon SP-API & Externe Daten
-│   ├── sp_api_functions.php           # Helper-Funktionen zur Interaktion mit Amazon SP-API
-│   └── get_amazon_product_details.php # Holt Produktdaten (ASIN, BuyBox-Preis, etc.)
-│
-├── 📋 Datenverwaltung & Formulare
-│   ├── addNew.php (und /DE/addNew.php) # Web-Interface zum Hinzufügen neuer Artikel
-│   ├── submit.php                 # Formular-Verarbeiter (Speichert Daten in die DB)
-│   └── check.php                  # Validierungsskript für Bestandsdaten
-│
-├── 🔍 Produktsuche & Frontend
-│   ├── search.php                 # Suchformular
-│   ├── results.php                # Anzeigelogik der Suchergebnisse
-│   └── *.css                      # Zugehörige Stylesheets (landingpage.css, results.css, ...)
-│
-├── 📈 Berichte & Logs
-│   ├── report.php                 # Übersicht erfolgreicher Preis- & Feed-Updates
-│   └── error_report.php           # Log für fehlgeschlagene API Calls, fehlende ASINs etc.
-│
-├── Workspace_products.php         # Generelle Datenverarbeitung für interne Tricoma Workspace Produkte
-│
-└── vendor/                        # Composer Packages (Guzzle, AWS, Amazon SDK, Dotenv etc.)
-```
+**Dein lokales Setup:**
+Da es sich um intern genutzte Skripte handelt, entwickelst du größtenteils direkt gegen die Testumgebung (`\tricoma Verzeichnis TEST`).
+* **PHP-Abhängigkeiten:** Werden über Composer verwaltet (`vendor/`). Solltest du eine neue Library brauchen, führe dort `composer require` aus. Wir nutzen z.B. Guzzle für externe Calls und das offizielle AWS/Amazon SP-API SDK.
+* **Datenbank:** Die primäre Verbindung wird in der `db_connection.php` konfiguriert. Greife niemals hart codiert auf Datenbanken zu, nutze immer die exportierte Verbindung.
+* **Secrets:** API-Keys (für Amazon SP-API, AWS IAM Nutzer etc.) liegen auf dem Server und werden dort verarbeitet. 
 
 ---
 
-## ⚙️ Voraussetzungen
+## 🔄 Der generelle Datenfluss
 
-1. **Webserver:** Apache oder Nginx
-2. **PHP:** Version 7.4 oder höher (Empfohlen: 8.x)
-3. **Datenbank:** MySQL (ab Version 5.7) oder MariaDB (ab Version 10.x)
-4. **Composer:** Zur Verwaltung der PHP-Abhängigkeiten.
+Wie fließen die Daten durch unser System?
 
----
-
-## 🔧 Installation & Setup
-
-1. **Repository klonen / übertragen**
-   Stellen Sie sicher, dass alle Dateien auf dem zu verwendenden Webserver / in das Workspace-Verzeichnis hochgeladen sind.
-
-2. **Abhängigkeiten installieren**
-   Führen Sie im Stammverzeichnis folgendes Kommando aus, falls `vendor` nicht auf dem neuesten Stand ist:
-   ```bash
-   composer install
-   ```
-
-3. **Umgebungsvariablen konfigurieren**
-   Kopieren Sie die `.env.example` (falls vorhanden) zu `.env` und füllen Sie die Zugangsdaten aus:
-   * Datenbank-Zugangsdaten (Host, User, Pass, DB-Name)
-   * Amazon SP-API Zugangsdaten (`LWA_CLIENT_ID`, `LWA_CLIENT_SECRET`, `AWS_IAM_USER_KEY`, etc.)
-   * Weitere Tricoma / API Keys.
-
-4. **Datenbank einrichten**
-   Das System geht davon aus, dass die unter `db_connection.php` aufgerufene Struktur existiert. Importieren Sie notwendige Tabellen zum Speichern der ASIN-Verknüpfungen und Preisgrenzen im Vorfeld.
+1. **ERP zu Middleware:** Produkte und Basispreise (Einkaufspreis / Listenpreis) existieren im Tricoma.
+2. **Kalkulation:** Das Script erfasst diese Basispreise, prüft die Durchschnittskosten und gleicht sie bei aktiviertem Repricing mit der aktuellen Amazon-BuyBox ab.
+3. **Validierung:** Vor jeder Preisänderung wird hart gegen `get_preisgrenzen.php` validiert. Fällt ein Preis unter unsere Marge, blockt das Script.
+4. **Export:** Das bestätigte Pricing-Update oder Bestandsupdate wird über die FeedBuilder gesammelt und via API an die Marktplätze verteilt.
 
 ---
 
-## 🖥 Nutzung & Workflows
+## ⚙️ Detaillierte Workflows: Was passiert wann?
 
-### 1. Neues Produkt aufnehmen (`addNew.php`)
-Ein Administrator öffnet das Formular via `addNew.php`, gibt die Produktkennung ein und wählt die gewünschten Preisstrategien oder -kanäle aus. Die Validierung und Speicherung erfolgt durch `submit.php`.
+### Workflow 1: Das Onboarding eines neuen Artikels
+Wird ein neuer Artikel für das Pricing-System freigeschaltet, passiert Folgendes:
+1. Der Fachbereich nutzt **`addNew.php`** (oder dessen deutsche Variante `/DE/addNew.php`). In das UI werden Basisdaten gemappt (z.B. Tricoma SKU -> Amazon ASIN).
+2. Das Formular schickt einen POST-Request an **`submit.php`**.
+3. **`submit.php`** verarbeitet die Daten, führt einen Check über **`check.php`** aus, um Duplikate zu vermeiden, und schreibt die Mapping-Daten (z.B. Mindestpreis, Maximalpreis, ASIN) in die lokale Tracking-Datenbank.
 
-### 2. Preisaktualisierung anstoßen (`pricing.php`)
-Die Preisroutinen können via Web-Aufruf oder als Cronjob (automatisiert im Hintergrund) angestoßen werden. 
-* Es wird der Basispreis (`get_avg_price.php`) ermittelt.
-* Das Skript vergleicht mit Amazon Wettbewerbern (`get_amazon_product_details.php`).
-* Das finale Ergebnis wird durch `get_preisgrenzen.php` gegen Hard-Limits validiert.
+### Workflow 2: Das dynamische Repricing (Automatischer Run)
+Dieser Prozess wird normalerweise via Cronjob, seltener manuell über das Dashboard, angestoßen.
+1. **Initialisierung:** **`pricing.php`** liest alle aktiven Produkte aus der Datenbank aus, die für ein Update geflaggt sind.
+2. **Preisermittlung:** 
+   * **`get_avg_price.php`** zieht den durchschnittlichen Einkaufspreis, berechnet Aufschläge (Marge, Versand) und ermittelt unseren "Soll"-Preis.
+   * **`get_current_price.php`** holt parallel die aktuelle Datenlage (Wie teuer bieten wir es aktuell an?).
+3. **Konkurrenzanalyse (nur Amazon):** 
+   * **`get_amazon_product_details.php`** nutzt das SP-API SDK in `vendor/amzn-spapi`, um die aktuelle BuyBox der gepflegten ASIN anzufragen.
+4. **Schranken-Prüfung:** Das wichtigste Skript hierbei ist **`get_preisgrenzen.php`**. Es vergleicht alle ermittelten Werte. Wenn z.B. die Amazon-BuyBox bei 10 € liegt, unsere Grenze (`get_preisgrenzen`) aber bei 12 € hart abriegelt, wird der Preis *nicht* auf 10 € gesenkt, um Verluste zu vermeiden!
+5. **DB Update:** Der finale, sichere Preis wird temporär in unsere Datenbank zurückgeschrieben.
 
-### 3. Feeds für Marktplätze übermitteln
-Die `AmazonFeedBuilder.php` und `ManoManoFeedBuilder.php` werden routinemäßig (z.B. per Cronjob) ausgeführt. Sie extrahieren geänderte Preis- / Bestandsdaten aus der Datenbank, generieren das erwartete API-Feed-Format und übermitteln dieses authentifiziert an das jeweilige Marktplatz-Netzwerk.
+### Workflow 3: Feed-Generierung & Marktplatz-Upload
+Der Preis ist nun systemseitig berechnet, muss aber zum Marktplatz:
+1. Dateien wie **`AmazonFeedBuilder.php`** und **`ManoManoFeedBuilder.php`** werden über **`marketplaces.php`** aufgerufen.
+2. Sie sammeln alle Produkte mit neuen Preisen oder Beständen aus der Datenbank und konvertieren diese in das zielgenaue Format (für Amazon meist spezielles XML oder Flat File JSON/CSV).
+3. Via AWS Signature / SP-API **`sp_api_functions.php`** wird der Payload an Amazon hochgeladen.
+4. Für ManoMano geschieht ein ähnlicher Netzwerkkall über cURL / Guzzle.
+5. Erfolgreiche Uploads triggern einen Eintrag in **`report.php`**. Fehler landen in **`error_report.php`**.
 
-### 4. Produkte überprüfen
-Über `search.php` kann intern nach Artikelnummern oder Bezeichnungen gesucht werden, um in `results.php` schnell herauszufinden: *Warum hat dieser Artikel welchen Preis?*
+### Workflow 4: Interne Suche / Supportfälle prüfen
+Ein Sachbearbeiter ruft im Intranet **`search.php`** auf, wenn ein Preis auf Amazon nicht stimmt.
+1. Eingabe der SKU.
+2. Formular leitet an **`results.php`** weiter.
+3. `results.php` lädt die CSS-Styles aus `results.css`, quert die Datenbank (letzter Pricing-Run, gesetzte Preisgrenzen) und gibt dem Sachbearbeiter visuell exakt aus, an welchem Limit (`get_preisgrenzen.php`) das Script gescheitert ist (z.B. "Buybox bei 5€, aber interner Mindestpreis bei 7€").
 
 ---
 
-## 🌐 API Integrationen
+## 📂 Dateien und ihre exakte Aufgabe (Glossar)
 
-Dieses Projekt verlässt sich stark auf externe Authentifizierungen. Die Sicherheit der API Tokens ist von höchster Bedeutung.
-* **Amazon SP-API (Selling Partner API):** Genutzt für asynchrones Feeds Management (Pricing/Inventory) sowie Catalog Items API für BuyBox Analysen. (Genutzt wird das im `vendor/amzn-spapi/sdk` hinterlegte SDK sowie Guzzle).
-* **AWS SDK:** Notwendig für Authentifizierungs-Signaturen (AWS Signature Version 4) zur Kommunikation mit den Amazon Endpunkten.
-
----
-
-## 🚨 Fehlerbehebung und Logs
-
-* **Weiße Seite / 500 Server Error:** PHP Error Logs aktivieren. Prüfen ob `.env` korrekt geladen wird (`vlucas/phpdotenv`).
-* **Amazon API lehnt ab (403 Forbidden / 401 Unauthorized):** Überprüfen Sie, ob die LWA (Login with Amazon) Tokens in der `.env` abgelaufen sind oder die AWS IAM Policies aktualisiert werden müssen.
-* **Preise Updaten nicht:** Konsultieren Sie `error_report.php` oder das System-Log. Manchmal werden Mindestmargen (Preisgrenze) unterschritten, weshalb der Algorithmus ein preisliches "Dumping" verweigert.
+* **`Workspace_products.php`**: Handhabt die Synchronisation der Basis-Produktdaten aus dem reinen Tricoma-Workspace in unser Pricing-Script.
+* **`marketplaces.php`**: Controller, der entscheidet, welcher FeedBuilder (Amazon vs. ManoMano) für welche SKUs getriggert wird.
+* **`sp_api_functions.php`**: Enthält alle Kernfunktionen zur Amazon Selling Partner API (Authentifizierung, Refresh-Tokens holen via LWA, Token rotieren). *Finger weg, wenn man sich mit AWS Signature V4 nicht auskennt!*
+* **`get_amazon_product_details.php`**: Spezielles Skript, das die Amazon Catalog API / Pricing API anfragt. Nutzt Methoden aus `sp_api_functions.php`.
+* **Frontend-Dateien (`addNew.css`, `landingpage.css`, `style.css`)**: Das Design der Benutzeroberflächen für Sachbearbeiter.
 
 ---
 
-*Dieses README dokumentiert den aktuellen Stand des Tricoma Pricing Scripts und sollte von allen beteiligten Entwicklern kontinuierlich gepflegt und erweitert werden.*
+## 🩺 Debugging & Logs
+
+Wenn etwas schiefläuft:
+
+1. **Preis wurde auf Amazon nicht aktualisiert?**
+   * Schau im Browser in die `error_report.php` – hier werden API-Limits (Throttling) der SP-API geloggt.
+   * Prüfe via `search.php` für die SKU, ob `get_preisgrenzen.php` das Setzen unterbunden hat.
+
+2. **Feeds gehen nicht durch?**
+   * Prüfe, ob die Tokens (Refresh Token) der SP-API noch gültig sind.
+   * Kontrolliere die Syntax, die `AmazonFeedBuilder.php` generiert, indem du das Skript lokal dumpst (`var_dump` oder `error_log`, aber *nicht* den echten Feed-Submit Befehl aktivieren).
+
+3. **Neues Feld von Tricoma hinzufügen?**
+   * Ändere den Sync in `Workspace_products.php` und erweitere die lokalen DB-Tabellen. Gegebenenfalls dann im `$feed_array` in z.B. `AmazonFeedBuilder.php` ergänzen. 
+
+Bei Fragen zur Infrastruktur oder Zugriff auf die `.env` Datei wende dich an deinen IT-Administrator.

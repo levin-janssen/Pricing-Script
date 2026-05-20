@@ -10,6 +10,7 @@ $dbConnectionTric->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 $dbConnectionTric->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
 
 #require 'vendor/autoload.php';
+require_once 'Logger.php';
 require_once 'sp_api_functions.php';
 require_once 'marketplaces.php';
 require_once 'AmazonFeedBuilder.php';
@@ -27,10 +28,12 @@ foreach ($marketplaces as $key => $value) {
     $countrycode = $key;
 
     echo "<h3>---  Marketplace: $key ---</h3>";
+    Logger::info("Start processing Marketplace", ['marketplace' => $key, 'currency' => $currencyCode]);
 
     $statement = $dbConnection->prepare("SELECT DISTINCT ASIN FROM tric4calc.Preisgrenzen WHERE min_preis IS NOT NULL AND min_preis != '' AND Land = '$countrycode'");
     $statement->execute();
     $asins = $statement->fetchAll(PDO::FETCH_ASSOC);
+    Logger::info("Found ASINs to process", ['marketplace' => $key, 'count' => count($asins)]);
 
     foreach ($asins as $key => $asin) {
         $asin = $asin["ASIN"];
@@ -43,10 +46,12 @@ foreach ($marketplaces as $key => $value) {
         $AmazonBuilder->addHandlingTime($sku, "0", $quantity);
         if($preis == null){
             echo "Kein neuer Preis für ASIN $asin. gesetzt <br>\r\n";
+            Logger::warning("Kein neuer Preis gesetzt", ['asin' => $asin, 'sku' => $sku]);
             continue;
         } 
         if(updateAmazonProductPrice( $sku, $preis,  "PRODUCT", $marketplaceId, $currencyCode)){
             echo "Preis für SKU $sku wurde erfolgreich auf $preis gesetzt.<br>\r\n";
+            Logger::info("Preis erfolgreich gesetzt", ['sku' => $sku, 'preis' => $preis, 'marketplaceId' => $marketplaceId]);
             $AmazonBuilder->addBusinessPrice($sku,  "EUR", $marketplaceId, ((float)($preis-0.01)));
             if($marketplaceId == "A1PA6795UKMFR9"){
                 $ManoManobuilderDE->addOffer($sku, ($preis));
@@ -55,6 +60,7 @@ foreach ($marketplaces as $key => $value) {
             }
         } else{
             echo "Fehler beim Setzen des Preises für SKU $sku.<br>\r\n";
+            Logger::error("Fehler beim Setzen des Preises", ['sku' => $sku, 'preis' => $preis, 'marketplaceId' => $marketplaceId]);
         }
     }
     
@@ -62,20 +68,29 @@ foreach ($marketplaces as $key => $value) {
 }
 
 $feedContent = $AmazonBuilder->build();
+Logger::info("Amazon Feed built", ['length' => strlen($feedContent)]);
 echo "<br>\r\nFeed Content:<br>\r\n<pre>" . htmlspecialchars($feedContent) . "</pre><br>\r\n";
 $doc = createFeedDocument();
-$docId = $doc["feedDocumentId"];
-$uploadUrl = $doc["url"];
-uploadFeedDocument($uploadUrl, $feedContent);
-$allMarketplaceIds = array_column($marketplaces, 'marketplaceId');
-$feed = createFeed($docId, $allMarketplaceIds);
-$feedId = $feed["feedId"];
-echo json_encode(["feedId" => $feedId]);
+if (isset($doc["feedDocumentId"])) {
+    $docId = $doc["feedDocumentId"];
+    $uploadUrl = $doc["url"];
+    uploadFeedDocument($uploadUrl, $feedContent);
+    $allMarketplaceIds = array_column($marketplaces, 'marketplaceId');
+    $feed = createFeed($docId, $allMarketplaceIds);
+    $feedId = $feed["feedId"];
+    echo json_encode(["feedId" => $feedId]);
+    Logger::info("Amazon Feed submitted", ['feedId' => $feedId, 'docId' => $docId]);
+} else {
+    Logger::error("Failed to create Amazon feed document", ['doc_response' => $doc]);
+}
 
 $response = $ManoManobuilderDE->send();
 print_r($response);
+Logger::info("ManoMano DE Feed sent", ['response' => $response]);
+
 $response = $ManoManobuilderFR->send();
 print_r($response);
+Logger::info("ManoMano FR Feed sent", ['response' => $response]);
 
 function processAsin($asin) {
     echo "<br>\r\n<br>\r\n---  ASIN: $asin ---<br>\r\n";
