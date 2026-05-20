@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/Logger.php';
 require_once 'db_connection.php';
 ini_set('error_log', 'error.log');
 //require 'vendor/autoload.php';
@@ -782,7 +783,13 @@ function createFeedDocument()
     ];
 
     $response = file_get_contents($url, false, stream_context_create($options));
-    return json_decode($response, true);
+    $decodedResponse = json_decode($response, true);
+    if ($response === false || empty($decodedResponse)) {
+        Logger::error("Failed to create Feed Document", ['response' => $response]);
+    } else {
+        Logger::info("Created Feed Document", ['feedDocumentId' => $decodedResponse['feedDocumentId'] ?? null]);
+    }
+    return $decodedResponse;
 }
 
 
@@ -799,6 +806,13 @@ function uploadFeedDocument($url, $content)
         ],
     ];
     $response = file_get_contents($url, false, stream_context_create($options));
+    
+    if ($response === false) {
+        Logger::error("Failed to upload Feed Document", ['url' => $url, 'content_length' => strlen($content)]);
+    } else {
+        Logger::debug("Feed Document uploaded successfully", ['url' => $url]);
+    }
+    
     return $response !== false;
 }
 
@@ -841,7 +855,13 @@ function createFeed($feedDocumentId, array $marketplaceIds) // <-- Now accepts a
     ];
 
     $response = file_get_contents($url, false, stream_context_create($options));
-    return json_decode($response, true);
+    $decodedResponse = json_decode($response, true);
+    if ($response === false || empty($decodedResponse)) {
+        Logger::error("Failed to create Feed", ['response' => $response, 'feedDocumentId' => $feedDocumentId, 'marketplaces' => $marketplaceIds]);
+    } else {
+        Logger::info("Created Feed", ['feedId' => $decodedResponse['feedId'] ?? null]);
+    }
+    return $decodedResponse;
 }
 
 /**

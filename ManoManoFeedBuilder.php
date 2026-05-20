@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/Logger.php';
 
 class ManoManoFeedBuilder
 {
@@ -72,8 +73,10 @@ class ManoManoFeedBuilder
             if ($response === false) {
                 $error = curl_error($curl);
                 $responses[] = "cURL error: $error";
+                Logger::error("ManoManoFeedBuilder: cURL error sending chunk", ['error' => $error]);
             } else {
                 $responses[] = $response;
+                Logger::debug("ManoManoFeedBuilder: Chunk sent", ['response' => $response]);
             }
 
             curl_close($curl);
