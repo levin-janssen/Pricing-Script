@@ -38,23 +38,52 @@ foreach ($marketplaces as $key => $value) {
 
     foreach ($asins as $key => $asin) {
         $asin = $asin["ASIN"];
+        
+        if (str_ends_with($asin, '_FBA')) {
+            Logger::info("FBA-Artikel erkannt und übersprungen (kein Bestandsupdate)", ['asin' => $asin, 'marketplace' => $marketplaceId]);
+            echo "Überspringe FBA-Artikel: ASIN $asin endet auf _FBA.<br>\r\n";
+            continue; 
+        }
+
         $statement = $dbConnection->prepare("SELECT sku FROM tric4calc.Artikel WHERE ASIN = '$asin'");
         $statement->execute();
         $result = $statement->fetch(PDO::FETCH_ASSOC);
         $sku = $result["sku"];
         $preis = processAsin($asin);
-        $quantity = getQuantityBySku($sku, "A6F5BRV91OMPP", $marketplaceId);
-        Logger::info("Ermittelter Bestand vor Preisupdate", ['sku' => $sku, 'quantity' => $quantity]);
-        $AmazonBuilder->addHandlingTime($sku, "0", $quantity);
-        Logger::info("Bestand an Amazon übermittelt", ['sku' => $sku, 'quantity' => $quantity]);
-        if ($quantity === 0 || $quantity === null) {
-            Logger::warning("Achtung: Bestand ist 0 oder leer!", ['sku' => $sku, 'asin' => $asin, 'quantity' => $quantity]);
+        
+        // 1. Alten Amazon-Bestand abfragen (nur für den Abgleich)
+        $amazonQuantity = getQuantityBySku($sku, "A6F5BRV91OMPP", $marketplaceId);
+        
+        // 2. Echten Bestand aus Tricoma abfragen (die Hilfsfunktion aus der vorherigen Antwort)
+        $tricomaQuantity = getTricomaStockByAsin($asin);
+
+        // 3. Bestände abgleichen und ggf. warne
+        if ($amazonQuantity !== $tricomaQuantity) {
+            Logger::warning("Bestandsabweichung festgestellt! Amazon-Bestand unterscheidet sich vom Tricoma-Lager.", [
+                'sku' => $sku, 
+                'asin' => $asin, 
+                'amazon_bisher' => $amazonQuantity, 
+                'tricoma_neu' => $tricomaQuantity
+            ]);
+            echo "Achtung: Bestandsabweichung für SKU $sku (Amazon: $amazonQuantity | Tricoma: $tricomaQuantity)<br>\r\n";
+        } else {
+            Logger::info("Bestand ist synchron", ['sku' => $sku, 'quantity' => $tricomaQuantity]);
         }
+
+        // 4. Tricoma-Menge an Amazon übergeben
+        $AmazonBuilder->addHandlingTime($sku, "0", $tricomaQuantity);
+        Logger::info("Tricoma-Lagerbestand an Amazon übermittelt", ['sku' => $sku, 'quantity' => $tricomaQuantity]);
+        
+        if ($tricomaQuantity === 0) {
+            Logger::warning("Achtung: Tricoma-Lagerbestand ist 0!", ['sku' => $sku, 'asin' => $asin]);
+        }
+
         if($preis == null){
-            echo "Kein neuer Preis für ASIN $asin. gesetzt <br>\r\n";
+            echo "Kein neuer Preis für ASIN $asin gesetzt <br>\r\n";
             Logger::warning("Kein neuer Preis gesetzt", ['asin' => $asin, 'sku' => $sku]);
             continue;
-        } 
+        }
+
         if(updateAmazonProductPrice( $sku, $preis,  "PRODUCT", $marketplaceId, $currencyCode)){
             echo "Preis für SKU $sku wurde erfolgreich auf $preis gesetzt.<br>\r\n";
             Logger::info("Preis erfolgreich gesetzt", ['sku' => $sku, 'asin' => $asin, 'preis' => $preis, 'marketplaceId' => $marketplaceId]);
@@ -69,7 +98,6 @@ foreach ($marketplaces as $key => $value) {
             Logger::error("Fehler beim Setzen des Preises", ['sku' => $sku, 'preis' => $preis, 'marketplaceId' => $marketplaceId]);
         }
     }
-    
 
 }
 
@@ -336,6 +364,21 @@ function logPlannedAction($dbConnection, $produktid, $neuerPreis, $niedrigsterPr
     } catch (PDOException $e) {
         echo "DB Log Error (action): " . $e->getMessage() . "<br>\r\n";
     }
+}
+
+function getTricomaStockByAsin($asin) {
+    global $dbConnectionTric;
+    
+    $stmt = $dbConnectionTric->prepare("
+        SELECT SUM(l.menge) AS total_quantity
+        FROM produkte_felder_werte pfw
+        INNER JOIN lager l ON pfw.produktid = l.vk_ID
+        WHERE pfw.feldid = 57 AND pfw.wert1 = :asin
+    ");
+    $stmt->execute([':asin' => $asin]);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    return $result['total_quantity'] !== null ? (int)$result['total_quantity'] : 0;
 }
 
 ?>
