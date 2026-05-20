@@ -3,16 +3,16 @@ ini_set('default_charset',  'UTF-8');
 ini_set('display_errors', 1); // For debugging
 error_reporting(E_ALL);
 
-require_once '../marketplaces.php';
-require_once '../db_connection.php';
+require_once 'marketplaces.php';
+require_once 'db_connection.php';
 $dbConnection = $dbConnectionTric4Calc;
 
 $asins_for_country = [];
 $db_error = '';
 
 // --- Determine current country from directory path ---
-$currentDir = basename(__DIR__);
-$current_marketplace_code = strtoupper($currentDir);
+// $currentDir removed
+$current_marketplace_code = isset($_GET['country']) ? strtoupper(filter_input(INPUT_GET, 'country', FILTER_SANITIZE_STRING)) : ''; if(!$current_marketplace_code) die("Missing country");
 
 if (!isset($marketplaces[$current_marketplace_code])) {
     $db_error = "Fehler: Unbekannter Marketplace-Code '" . htmlspecialchars($current_marketplace_code) . "' aus Verzeichnispfad.";
@@ -41,9 +41,9 @@ if (!isset($marketplaces[$current_marketplace_code])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ASIN Produktsuche - <?= htmlspecialchars($current_marketplace_code) ?></title>
-    <link rel="stylesheet" href="../style.css">
-    <link rel="stylesheet" href="../landingpage.css">
-    <link rel="icon" type="image/x-icon" href="../img/tag.ico" sizes="32x32">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="landingpage.css">
+    <link rel="icon" type="image/x-icon" href="img/tag.ico" sizes="32x32">
     <style>
         .marketplace-select-wrapper {
             position: absolute; top: 20px; left: 20px; display: flex; align-items: center;
@@ -59,7 +59,7 @@ if (!isset($marketplaces[$current_marketplace_code])) {
 <body>
 
     <div class="marketplace-select-wrapper">
-         <img id="currentMarketplaceFlag" src="<?= isset($marketplaces[$current_marketplace_code]['img']) ? htmlspecialchars($marketplaces[$current_marketplace_code]['img']) : '../img/default.png' ?>" alt="<?= htmlspecialchars($current_marketplace_code) ?> Flag">
+         <img id="currentMarketplaceFlag" src="<?= isset($marketplaces[$current_marketplace_code]['img']) ? htmlspecialchars($marketplaces[$current_marketplace_code]['img']) : 'img/default.png' ?>" alt="<?= htmlspecialchars($current_marketplace_code) ?> Flag">
         <select id="marketplaceSelect">
             <?php foreach ($marketplaces as $code => $details): ?>
                 <option value="<?= htmlspecialchars($details['url']) ?>" <?= ($code === $current_marketplace_code) ? 'selected' : '' ?>>
@@ -68,24 +68,23 @@ if (!isset($marketplaces[$current_marketplace_code])) {
             <?php endforeach; ?>
         </select>
     </div>
-    
-    <a href="../index.php" style="text-decoration: none !important;">
+    <a href="index.php" style="text-decoration: none !important;">
     <h1>
-        <img src="<?= isset($marketplaces[$current_marketplace_code]['img']) ? htmlspecialchars($marketplaces[$current_marketplace_code]['img']) : '../img/default.png' ?>" alt="Flag <?= htmlspecialchars($current_marketplace_code) ?>" style="height:1.2em; vertical-align:middle;">
+        <img src="<?= isset($marketplaces[$current_marketplace_code]['img']) ? htmlspecialchars($marketplaces[$current_marketplace_code]['img']) : 'img/default.png' ?>" alt="Flag <?= htmlspecialchars($current_marketplace_code) ?>" style="height:1.2em; vertical-align:middle;">
         <span>Dynamic Pricing Tool</span>
     </h1>
     </a>
-
-    <a href="addNew.php" style="position: absolute; top: 20px; right: 20px;">
+    <a href="addNew.php?country=<?= urlencode($current_marketplace_code) ?>" style="position: absolute; top: 20px; right: 20px;">
         <button id="addproductBtn">
             + Produkt hinzufügen 
         </button>
     </a>
+    
 
     <?php if ($db_error): ?>
         <p class="message error" style="text-align:center;"><?= htmlspecialchars($db_error) ?></p>
     <?php else: ?>
-        <form action="results.php" method="GET" id="asin-search-form">
+        <form action="results.php" method="GET" id="asin-search-form">`n            <input type="hidden" name="country" value="<?= htmlspecialchars($current_marketplace_code) ?>">
             <label for="asin-input">ASIN für Land <?= htmlspecialchars($current_marketplace_code) ?> eingeben oder auswählen:</label>
             <input type="text"
                    id="asin-input"

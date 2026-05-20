@@ -3,19 +3,19 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 ini_set('default_charset', 'UTF-8');
-ini_set('error_log', '../error.log');
+ini_set('error_log', 'error.log');
 
-require_once '../sp_api_functions.php'; // Enthält callItemsAPI, getInfoByASIN, etc.
-require_once '../db_connection.php';
-require_once '../marketplaces.php'; // To get DB names for Buybox tables
+require_once 'sp_api_functions.php'; // Enthält callItemsAPI, getInfoByASIN, etc.
+require_once 'db_connection.php';
+require_once 'marketplaces.php'; // To get DB names for Buybox tables
 
 $dbConnection = $dbConnectionTric4Calc;
 $message = '';
 $message_type = '';
 
 // --- Determine current country from directory path ---
-$currentDir = basename(__DIR__); // e.g., "IT", "DE"
-$current_marketplace_code = strtoupper($currentDir); // Ensure consistency, e.g., IT
+// $currentDir removed // e.g., "IT", "DE"
+$current_marketplace_code = isset($_GET['country']) ? strtoupper(filter_input(INPUT_GET, 'country', FILTER_SANITIZE_STRING)) : (isset($_POST['country']) ? strtoupper(filter_input(INPUT_POST, 'country', FILTER_SANITIZE_STRING)) : ''); if(empty($current_marketplace_code)) die("Missing country in addNew.php"); // Ensure consistency, e.g., IT
 $currency_symbol = '€'; // Default currency symbol
 
 // Validate if the determined marketplace code is valid
@@ -277,15 +277,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $message_type !== 'error') { // Pro
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Produkt für Land: <?= htmlspecialchars(strtoupper($current_marketplace_code)) ?> anlegen/bearbeiten</title>
-    <link rel="stylesheet" href="../style.css">
-    <link rel="stylesheet" href="../landingpage.css">
-    <link rel="stylesheet" href="../addNew.css">
-    <link rel="icon" type="image/x-icon" href="../img/tag.ico" sizes="32x32">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="landingpage.css">
+    <link rel="stylesheet" href="addNew.css">
+    <link rel="icon" type="image/x-icon" href="img/tag.ico" sizes="32x32">
 </head>
 <body>
 
-    <h1><img src="../img/<?= htmlspecialchars($current_marketplace_code) ?>.png" alt="<?= htmlspecialchars($current_marketplace_code) ?>" style="height: 1em; vertical-align: middle;"> Produkt anlegen   </h1>
-    <a href="index.php" style="display: inline-block; margin-bottom: 20px;">&laquo; Zurück zur Übersicht</a>
+    <h1><img src="img/<?= htmlspecialchars($current_marketplace_code) ?>.png" alt="<?= htmlspecialchars($current_marketplace_code) ?>" style="height: 1em; vertical-align: middle;"> Produkt anlegen   </h1>
+    <a href="search.php?country=<?= urlencode($current_marketplace_code) ?>" style="display: inline-block; margin-bottom: 20px;">&laquo; Zurück zur Übersicht</a>
 
     <?php if ($message): ?>
         <div class="message <?= htmlspecialchars($message_type) ?>">
@@ -293,7 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $message_type !== 'error') { // Pro
         </div>
     <?php endif; ?>
 
-    <form action="addNew.php" method="POST" id="add-product-form">
+    <form action="addNew.php" method="POST" id="add-product-form"><input type="hidden" name="country" value="<?= htmlspecialchars($current_marketplace_code) ?>">
 
         <label for="asin-input" class="required">ASIN eingeben:</label>
         <input type="text" id="asin-input" name="asin" placeholder="ASIN (z.B. B08XYZ1234)" required autocomplete="off" pattern="^[A-Z0-9]{10}$" title="Gültige 10-stellige ASIN." value="<?= htmlspecialchars($asin_submitted) ?>">
@@ -415,7 +415,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $message_type !== 'error') { // Pro
             try {
                 // Step 1: Fetch Artikel details (name, sku, existing ID) from Workspace_products.php
                 // This tells us if the ASIN is known in the Artikel table at all.
-                const artikelResponse = await fetch(`../Workspace_products.php?asin=${encodeURIComponent(asin)}`);
+                const artikelResponse = await fetch(`Workspace_products.php?asin=${encodeURIComponent(asin)}`);
                 if (!artikelResponse.ok) throw new Error(`Artikeldaten HTTP Fehler: ${artikelResponse.status}`);
                 const artikelDataArray = await artikelResponse.json();
 
@@ -455,7 +455,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $message_type !== 'error') { // Pro
                 // Step 3: Fetch existing Preisgrenzen for this ASIN and current_marketplace_code
                 // We create a new endpoint for this or extend an existing one.
                 // For simplicity, let's assume a new endpoint get_preisgrenzen.php
-                const preisgrenzenResponse = await fetch(`../get_preisgrenzen.php?asin=${encodeURIComponent(asin)}&land=${encodeURIComponent(marketplaceCode)}`);
+                const preisgrenzenResponse = await fetch(`get_preisgrenzen.php?asin=${encodeURIComponent(asin)}&land=${encodeURIComponent(marketplaceCode)}`);
                 if (preisgrenzenResponse.ok) {
                     const preisgrenzenData = await preisgrenzenResponse.json();
                     if (preisgrenzenData && preisgrenzenData.min_preis !== undefined) {
@@ -514,7 +514,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $message_type !== 'error') { // Pro
             try {
                 // Assuming get_amazon_product_details.php also takes marketplaceId if necessary,
                 // or it's globally applicable.
-                const response = await fetch(`../get_amazon_product_details.php?asin=${encodeURIComponent(asin)}`);
+                const response = await fetch(`get_amazon_product_details.php?asin=${encodeURIComponent(asin)}`);
                 if (!response.ok) throw new Error(`Amazon Details HTTP Fehler: ${response.status}`);
                 const result = await response.json();
 
@@ -570,7 +570,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $message_type !== 'error') { // Pro
             currentPriceDisplay.innerHTML = '<i>Lade aktuellen Marktpreis...</i>';
             try {
                 // Adjust get_current_price.php if it needs marketplaceCode
-                const priceResponse = await fetch(`../get_current_price.php?asin=${encodeURIComponent(asin)}&marketplace=${encodeURIComponent(marketplaceCode)}`);
+                const priceResponse = await fetch(`get_current_price.php?asin=${encodeURIComponent(asin)}&marketplace=${encodeURIComponent(marketplaceCode)}`);
                 if (!priceResponse.ok) throw new Error(`Marktpreis HTTP Fehler: ${priceResponse.status}`);
                 const priceResult = await priceResponse.json();
 

@@ -1,48 +1,7 @@
 <?php
 header('Content-Type: text/html; charset=utf-8');
 
-$marketplaces = [
-    'DE' => [
-        'name' => 'Deutschland',
-        'url' => 'DE/index.php',
-        'img' => 'img/DE.png',
-    ],
-    'IT' => [
-        'name' => 'Italien',
-        'url' => 'IT/index.php',
-        'img' => 'img/IT.png',
-    ],
-    'ES' => [
-        'name' => 'Spanien',
-        'url' => 'ES/index.php',
-        'img' => 'img/ES.png',
-    ],
-    'FR' => [
-        'name' => 'Frankreich',
-        'url' => 'FR/index.php',
-        'img' => 'img/FR.png',
-    ],
-    'UK' => [
-        'name' => 'Vereinigtes Königreich',
-        'url' => 'UK/index.php',
-        'img' => 'img/UK.png',
-    ],
-    'BE' => [
-        'name' => 'Belgien',
-        'url' => 'BE/index.php',
-        'img' => 'img/BE.png',
-    ],
-    'NL' => [
-        'name' => 'Niederlande',
-        'url' => 'NL/index.php',
-        'img' => 'img/NL.png',
-    ],
-    'SE' => [
-        'name' => 'Schweden',
-        'url' => 'SE/index.php',
-        'img' => 'img/SE.png',
-    ],
-];
+require_once 'marketplaces.php';
 ?>
 <!DOCTYPE html>
 <html lang="de">
@@ -197,3 +156,4 @@ $marketplaces = [
 
 </body>
 </html>
+

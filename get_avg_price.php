@@ -4,8 +4,8 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-require_once '../db_connection.php';
-require_once '../marketplaces.php';
+require_once 'db_connection.php';
+require_once 'marketplaces.php';
 
 
 $asin = filter_input(INPUT_GET, 'asin', FILTER_SANITIZE_FULL_SPECIAL_CHARS);

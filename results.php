@@ -3,17 +3,17 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 ini_set('default_charset', 'UTF-8');
-ini_set('error_log', '../error.log'); // Ensure error log path is correct relative to this file's location
+ini_set('error_log', 'error.log'); // Ensure error log path is correct relative to this file's location
 
-require_once '../marketplaces.php';
-require_once '../db_connection.php';
+require_once 'marketplaces.php';
+require_once 'db_connection.php';
 
 $dbConnection = $dbConnectionTric4Calc;
 
 
 // --- Determine current country from directory path ---
-$currentDir = basename(__DIR__);
-$current_marketplace_code = strtoupper($currentDir);
+// $currentDir removed
+$current_marketplace_code = isset($_GET['country']) ? strtoupper(filter_input(INPUT_GET, 'country', FILTER_SANITIZE_STRING)) : (isset($_POST['country']) ? strtoupper(filter_input(INPUT_POST, 'country', FILTER_SANITIZE_STRING)) : ''); if(empty($current_marketplace_code)) die("Missing country in results.php");
 $currency_symbol = '€'; // Default currency symbol
 
 
@@ -314,26 +314,26 @@ if (empty($db_error) && !empty($selectedAsin)) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Produktdetails <?= htmlspecialchars($current_marketplace_code) ?> -
         <?= htmlspecialchars($selectedAsin ?: 'N/A') ?></title>
-    <link rel="stylesheet" href="../style.css">
-    <link rel="stylesheet" href="../results.css">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="results.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/moment"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment"></script>
     <script
         src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-    <link rel="icon" type="image/x-icon" href="../img/tag.ico" sizes="32x32">
+    <link rel="icon" type="image/x-icon" href="img/tag.ico" sizes="32x32">
 </head>
 
 <body>
     <script> const currencySymbolJS = '<?= $currency_symbol ?>'; </script>
     <div class="asin-header">
         <div class="left-container">
-            <a href="index.php"><button>&laquo; Zurück</button></a>
+            <a href="search.php?country=<?= urlencode($current_marketplace_code) ?>"><button>&laquo; Zurück</button></a>
             <h1 style="
     display: flex;
     align-items: center;
     gap: .25em;
-"> <img src="../img/<?= htmlspecialchars($current_marketplace_code) ?>.png"
+"> <img src="img/<?= htmlspecialchars($current_marketplace_code) ?>.png"
                     alt="<?= htmlspecialchars($current_marketplace_code) ?>"
                     style="height: 1em; vertical-align: middle;"><a target="_blank"
                     href="https://www.amazon.de/dp/<?= htmlspecialchars($selectedAsin ?: 'N/A') ?>"><?= htmlspecialchars($selectedAsin ?: 'Keine ASIN') ?></a>
@@ -350,26 +350,26 @@ if (empty($db_error) && !empty($selectedAsin)) {
             <h3><?= htmlspecialchars($productArtikelDetails['artikelname']) ?> (SKU:
                 <?= htmlspecialchars($productArtikelDetails['sku'] ?? 'N/A') ?>)</h3>
             <div class="price-fields">
-                <div class="price-field" title="Eigener Preis"><img src="../img/person.png" alt="Eigener Preis"
+                <div class="price-field" title="Eigener Preis"><img src="img/person.png" alt="Eigener Preis"
                         class="price-icon"><span
                         class="price-value"><?= ($productArtikelDetails['eigener_preis'] !== 'N/A' && $productArtikelDetails['eigener_preis'] !== null) ? number_format((float) $productArtikelDetails['eigener_preis'], 2, '.', '') . $currency_symbol : 'N/A' ?></span>
                 </div>
-                <div class="price-field" title="Niedrigster Preis"><img src="../img/arrow_down.png" alt="Niedrigster Preis"
+                <div class="price-field" title="Niedrigster Preis"><img src="img/arrow_down.png" alt="Niedrigster Preis"
                         class="price-icon"><span
                         class="price-value"><?= ($productArtikelDetails['niedrigster_preis'] !== 'N/A' && $productArtikelDetails['niedrigster_preis'] !== null) ? number_format((float) $productArtikelDetails['niedrigster_preis'], 2, '.', '') . $currency_symbol : 'N/A' ?></span>
                 </div>
-                <div class="price-field" title="BuyBox Preis"><img src="../img/star.png" alt="BuyBox Preis"
+                <div class="price-field" title="BuyBox Preis"><img src="img/star.png" alt="BuyBox Preis"
                         class="price-icon"><span
                         class="price-value"><?= ($productArtikelDetails['bbox_preis'] !== 'N/A' && $productArtikelDetails['bbox_preis'] !== null) ? number_format((float) $productArtikelDetails['bbox_preis'], 2, '.', '') . $currency_symbol : 'N/A' ?></span>
                 </div>
                 <div class="price-field" title="BuyBox Anteil">
-                    <img src="../img/trophy.png" alt="BuyBox Anteil" class="price-icon">
+                    <img src="img/trophy.png" alt="BuyBox Anteil" class="price-icon">
                     <span class="price-value" id="buyboxanteil">lädt...</span>
                 </div>
                 <a id="avgPriceReportLink" class="price-field"
-                    href="../report.php?sku=<?= htmlspecialchars($productArtikelDetails['sku'] ?? '') ?>&time_period=7&source=amazon"
+                    href="report.php?sku=<?= htmlspecialchars($productArtikelDetails['sku'] ?? '') ?>&time_period=7&source=amazon"
                     target="_blank" title="Durchschnittl. VK Preis - Klicken, um Bericht zu öffnen.">
-                    <img src="../img/avg.png" alt="Durchschnittlicher Verkaufspreis" class="price-icon">
+                    <img src="img/avg.png" alt="Durchschnittlicher Verkaufspreis" class="price-icon">
                     <span class="price-value">
                         <?= ($avg_sales_price_7d !== 'N/A') ? number_format($avg_sales_price_7d, 2, '.', '') . $currency_symbol : 'N/A' ?>
                     </span>
@@ -407,7 +407,7 @@ if (empty($db_error) && !empty($selectedAsin)) {
                     action="<?= htmlspecialchars($_SERVER['PHP_SELF']) ?>?asin=<?= urlencode($selectedAsin) ?>"
                     method="POST">
                     <h4>Preisgrenzen für <?= htmlspecialchars($current_marketplace_code) ?></h4>
-                    <input type="hidden" name="asin" value="<?= htmlspecialchars($selectedAsin) ?>">
+                    <input type="hidden" name="country" value="<?= htmlspecialchars($current_marketplace_code) ?>"><input type="hidden" name="asin" value="<?= htmlspecialchars($selectedAsin) ?>">
                     <div class="input-group">
                         <label for="min_preis">Min Preis (<?= $currency_symbol ?>):</label>
                         <input type="number" step="0.01" id="min_preis" name="min_preis" required
