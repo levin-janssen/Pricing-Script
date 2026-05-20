@@ -1,12 +1,13 @@
 <?php
+require_once __DIR__ . '/bootstrap.php';
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 ini_set('default_charset', 'UTF-8');
-ini_set('error_log', 'error.log'); // Ensure error log path is correct relative to this file's location
+ini_set('error_log', APP_ROOT . '/error.log'); // Ensure error log path is correct relative to this file's location
 
-require_once 'marketplaces.php';
-require_once 'db_connection.php';
+require_once APP_ROOT . '/config/marketplaces.php';
+require_once APP_ROOT . '/config/db_connection.php';
 
 $dbConnection = $dbConnectionTric4Calc;
 

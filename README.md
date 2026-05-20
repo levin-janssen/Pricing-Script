@@ -23,7 +23,9 @@ Das System fungiert als Middleware zwischen unserem Tricoma ERP-System (der "Sou
 **Dein lokales Setup:**
 Da es sich um intern genutzte Skripte handelt, entwickelst du größtenteils direkt gegen die Testumgebung (`\tricoma Verzeichnis TEST`).
 * **PHP-Abhängigkeiten:** Werden über Composer verwaltet (`vendor/`). Solltest du eine neue Library brauchen, führe dort `composer require` aus. Wir nutzen z.B. Guzzle für externe Calls und das offizielle AWS/Amazon SP-API SDK.
-* **Datenbank:** Die primäre Verbindung wird in der `db_connection.php` konfiguriert. Greife niemals hart codiert auf Datenbanken zu, nutze immer die exportierte Verbindung.
+* **Datenbank:** Die primäre Verbindung wird in **`config/db_connection.php`** konfiguriert (die Datei `db_connection.php` im Webroot lädt nur diese kanonische Datei). Greife niemals hart codiert auf Datenbanken zu, nutze immer die exportierte Verbindung.
+* **Projektstruktur:** Öffentliche URLs bleiben unverändert (z. B. `search.php?country=DE`). Im Webroot liegen nur dünne **Einstiegs-Stubs**; die Implementierung steht unter **`src/Http/`**. Gemeinsamer Code: **`config/`** (DB, Marktplätze), **`src/Support/`**, **`src/Services/`**. Jeder Stub lädt **`bootstrap.php`** (`APP_ROOT`) und danach die passende Datei in `src/Http/`.
+* **Migration großer Seiten:** `results.php`, `addNew.php`, `pricing.php` und `report.php` einmalig mit `php tools/migrate_http.php` auf dem Server nachziehen (kopiert nach `src/Http/` und ersetzt den Root durch Stubs). Danach optional `tools/migrate_http.php` löschen oder per Webserver sperren.
 * **Secrets:** API-Keys (für Amazon SP-API, AWS IAM Nutzer etc.) liegen auf dem Server und werden dort verarbeitet. 
 
 ---
@@ -74,11 +76,29 @@ Ein Sachbearbeiter ruft im Intranet **`search.php`** auf, wenn ein Preis auf Ama
 
 ---
 
+## 📁 Ordnerübersicht (für neue Entwickler)
+
+| Pfad | Rolle |
+|------|--------|
+| **`*.php` (Webroot)** | Öffentliche URLs — nur Stubs (`bootstrap` + `src/Http/…`) |
+| **`src/Http/`** | Seiten und AJAX-Endpunkte (eigentliche Logik) |
+| **`config/`** | `db_connection.php`, `marketplaces.php` |
+| **`src/Services/`** | SP-API, Amazon/ManoMano Feed Builder |
+| **`src/Support/`** | `Logger.php` |
+| **`bootstrap.php`** | Setzt `APP_ROOT` |
+
+Shims im Webroot (`db_connection.php`, `Logger.php`, …) leiten auf `config/` bzw. `src/` weiter, falls alte `require`-Pfade noch vorkommen.
+
+---
+
 ## 📂 Dateien und ihre exakte Aufgabe (Glossar)
 
 * **`Workspace_products.php`**: Handhabt die Synchronisation der Basis-Produktdaten aus dem reinen Tricoma-Workspace in unser Pricing-Script.
-* **`marketplaces.php`**: Controller, der entscheidet, welcher FeedBuilder (Amazon vs. ManoMano) für welche SKUs getriggert wird.
-* **`sp_api_functions.php`**: Enthält alle Kernfunktionen zur Amazon Selling Partner API (Authentifizierung, Refresh-Tokens holen via LWA, Token rotieren). *Finger weg, wenn man sich mit AWS Signature V4 nicht auskennt!*
+* **`config/db_connection.php`** (über **`db_connection.php`** im Root eingebunden): PDO-Verbindungen und SP-API-Konstanten.
+* **`config/marketplaces.php`** (über **`marketplaces.php`** im Root): Marktplatz-Matrix inkl. URLs zu den bestehenden Tools (`search.php?country=…`).
+* **`src/Services/sp_api_functions.php`**: Enthält alle Kernfunktionen zur Amazon Selling Partner API (Authentifizierung, Refresh-Tokens holen via LWA, Token rotieren). *Finger weg, wenn man sich mit AWS Signature V4 nicht auskennt!* Die Datei **`sp_api_functions.php`** im Webroot leitet nur noch hierher weiter.
+* **`src/Services/AmazonFeedBuilder.php`** / **`ManoManoFeedBuilder.php`**: Feed-Aufbereitung; die gleichnamigen Dateien im Root sind Weiterleitungen.
+* **`src/Support/Logger.php`**: Dateilogging nach `logs/` unter dem Projektroot.
 * **`get_amazon_product_details.php`**: Spezielles Skript, das die Amazon Catalog API / Pricing API anfragt. Nutzt Methoden aus `sp_api_functions.php`.
 * **Frontend-Dateien (`addNew.css`, `landingpage.css`, `style.css`)**: Das Design der Benutzeroberflächen für Sachbearbeiter.
 

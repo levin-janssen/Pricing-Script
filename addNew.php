@@ -1,13 +1,14 @@
 <?php
+require_once __DIR__ . '/bootstrap.php';
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 ini_set('default_charset', 'UTF-8');
-ini_set('error_log', 'error.log');
+ini_set('error_log', APP_ROOT . '/error.log');
 
-require_once 'sp_api_functions.php'; // Enthält callItemsAPI, getInfoByASIN, etc.
-require_once 'db_connection.php';
-require_once 'marketplaces.php'; // To get DB names for Buybox tables
+require_once APP_ROOT . '/src/Services/sp_api_functions.php'; // Enthält callItemsAPI, getInfoByASIN, etc.
+require_once APP_ROOT . '/config/db_connection.php';
+require_once APP_ROOT . '/config/marketplaces.php'; // To get DB names for Buybox tables
 
 $dbConnection = $dbConnectionTric4Calc;
 $message = '';

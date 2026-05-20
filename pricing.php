@@ -1,6 +1,7 @@
 <?php
+require_once __DIR__ . '/bootstrap.php';
 ini_set('default_charset',  'UTF-8');
-ini_set('error_log', 'error.log');
+ini_set('error_log', APP_ROOT . '/error.log');
 $dbConnection = new PDO('mysql:dbname=tric4calc;host=127.0.0.1;', 'root', '***REMOVED***');
 $dbConnection->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 $dbConnection->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_WARNING);
@@ -9,12 +10,12 @@ $dbConnectionTric = new PDO('mysql:dbname=***REMOVED***;host=***REMOVED***;', '*
 $dbConnectionTric->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 $dbConnectionTric->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
 
-#require 'vendor/autoload.php';
-require_once 'Logger.php';
-require_once 'sp_api_functions.php';
-require_once 'marketplaces.php';
-require_once 'AmazonFeedBuilder.php';
-require_once 'ManoManoFeedBuilder.php';
+#require APP_ROOT . '/vendor/autoload.php';
+require_once APP_ROOT . '/src/Support/Logger.php';
+require_once APP_ROOT . '/src/Services/sp_api_functions.php';
+require_once APP_ROOT . '/config/marketplaces.php';
+require_once APP_ROOT . '/src/Services/AmazonFeedBuilder.php';
+require_once APP_ROOT . '/src/Services/ManoManoFeedBuilder.php';
 $AmazonBuilder = new AmazonFeedBuilder("A6F5BRV91OMPP", "2.0", "de_DE");
 $ManoManobuilderDE = new ManoManoFeedBuilder("cxkiqBhdGZUBLpWPOyyPDMPs67iZvMJp", 7877481);
 $ManoManobuilderFR = new ManoManoFeedBuilder("Hj8MyH9mXKy2Xv7ITTqeqrNkRbxro2Nm", 7877481);

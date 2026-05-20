@@ -1,0 +1,71 @@
+<?php 
+
+$marketplaces = [
+    'DE' => [
+        'name' => 'Deutschland',
+        'url' => 'search.php?country=DE',
+        'img' => 'img/DE.png',
+        'marketplaceId' => 'A1PA6795UKMFR9',
+        'dbName' => 'Buybox_DE',
+        'currencyCode' => 'EUR',
+    ],
+    'IT' => [
+        'name' => 'Italien',
+        'url' => 'search.php?country=IT',
+        'img' => 'img/IT.png',
+        'marketplaceId' => 'APJ6JRA9NG5V4', // Amazon Italy
+        'dbName' => 'Buybox_IT',
+        'currencyCode' => 'EUR',
+    ],
+    'ES' => [
+        'name' => 'Spanien',
+        'url' => 'search.php?country=ES',
+        'img' => 'img/ES.png',
+        'marketplaceId' => 'A1RKKUPIHCS9HS', // Amazon Spain
+        'dbName' => 'Buybox_ES',
+        'currencyCode' => 'EUR',
+    ],
+    'FR' => [
+        'name' => 'Frankreich',
+        'url' => 'search.php?country=FR',
+        'img' => 'img/FR.png',
+        'marketplaceId' => 'A13V1IB3VIYZZH', // Amazon France
+        'dbName' => 'Buybox_FR',
+        'currencyCode' => 'EUR',
+    ],
+    'UK' => [
+        'name' => 'Vereinigtes Königreich',
+        'url' => 'search.php?country=UK',
+        'img' => 'img/UK.png',
+        'marketplaceId' => 'A1F83G8C2ARO7P', // Amazon UK
+        'dbName' => 'Buybox_UK',
+        'currencyCode' => 'GBP',
+    ],
+    'BE' => [
+        'name' => 'Belgien',
+        'url' => 'search.php?country=BE',
+        'img' => 'img/BE.png',
+        'marketplaceId' => 'AMEN7PMS3EDWL', // Amazon Belgium
+        'dbName' => 'Buybox_BE',
+        'currencyCode' => 'EUR',
+    ],
+    'NL' => [
+        'name' => 'Niederlande',
+        'url' => 'search.php?country=NL',
+        'img' => 'img/NL.png',
+        'marketplaceId' => 'A1805IZSGTT6HS', // Amazon Netherlands
+        'dbName' => 'Buybox_NL',
+        'currencyCode' => 'EUR',
+    ],
+    'SE' => [
+        'name' => 'Schweden',
+        'url' => 'search.php?country=SE',
+        'img' => 'img/SE.png',
+        'marketplaceId' => 'A2NODRKZP88ZB9', // Amazon Sweden
+        'dbName' => 'Buybox_SE',
+        'currencyCode' => 'SEK',
+    ]
+];
+
+
+?>

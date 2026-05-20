@@ -1,9 +1,10 @@
 <?php
+require_once __DIR__ . '/bootstrap.php';
 header('Content-Type: text/html; charset=utf-8');
-require_once 'sp_api_functions.php';
-require_once 'db_connection.php';
-require_once 'ManoManoFeedBuilder.php';
-require_once 'AmazonFeedBuilder.php';
+require_once APP_ROOT . '/src/Services/sp_api_functions.php';
+require_once APP_ROOT . '/config/db_connection.php';
+require_once APP_ROOT . '/src/Services/ManoManoFeedBuilder.php';
+require_once APP_ROOT . '/src/Services/AmazonFeedBuilder.php';
 
 $sku_to_search = $_GET['sku'] ?? '10-2-14-441'; 
 $time_period = $_GET['time_period'] ?? '7';
