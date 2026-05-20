@@ -43,7 +43,12 @@ foreach ($marketplaces as $key => $value) {
         $sku = $result["sku"];
         $preis = processAsin($asin);
         $quantity = getQuantityBySku($sku, "A6F5BRV91OMPP", $marketplaceId);
+        Logger::info("Ermittelter Bestand vor Preisupdate", ['sku' => $sku, 'quantity' => $quantity]);
         $AmazonBuilder->addHandlingTime($sku, "0", $quantity);
+        Logger::info("Bestand an Amazon übermittelt", ['sku' => $sku, 'quantity' => $quantity]);
+        if ($quantity === 0 || $quantity === null) {
+            Logger::warning("Achtung: Bestand ist 0 oder leer!", ['sku' => $sku, 'quantity' => $quantity]);
+        }
         if($preis == null){
             echo "Kein neuer Preis für ASIN $asin. gesetzt <br>\r\n";
             Logger::warning("Kein neuer Preis gesetzt", ['asin' => $asin, 'sku' => $sku]);
