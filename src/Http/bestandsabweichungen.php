@@ -13,6 +13,7 @@ $filterSku = isset($_GET['sku']) ? trim((string)$_GET['sku']) : '';
 $rawMinAbsDiff = isset($_GET['min_abs_diff']) ? trim((string)$_GET['min_abs_diff']) : '';
 $filterDirection = isset($_GET['direction']) ? trim((string)$_GET['direction']) : 'any';
 $filterUnique = isset($_GET['unique']) && $_GET['unique'] === '1';
+$filterExactDuplicates = isset($_GET['exact_duplicates']) && $_GET['exact_duplicates'] === '1'; // NEUER FILTER
 $minAbsDiff = null;
 
 if ($rawDate !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawDate)) {
@@ -124,6 +125,32 @@ if ($error === '') {
         return true;
     }));
 
+    // NEUER FILTER: Exakte Duplikate entfernen (älteste behalten)
+    if ($filterExactDuplicates) {
+        $oldestExact = [];
+        foreach ($filteredEntries as $entry) {
+            // Eindeutiger Key aus den Werten generieren
+            $key = implode('|', [
+                (string)$entry['sku'],
+                (string)$entry['asin'],
+                (string)$entry['amazon_bisher'],
+                (string)$entry['tricoma_neu'],
+                (string)$entry['diff']
+            ]);
+
+            // Wenn Key noch nicht existiert oder der aktuelle Eintrag älter ist (kleinerer Timestamp) -> Speichern
+            if (!isset($oldestExact[$key]) || strcmp($entry['timestamp'], $oldestExact[$key]['timestamp']) < 0) {
+                $oldestExact[$key] = $entry;
+            }
+        }
+        $filteredEntries = array_values($oldestExact);
+        
+        // Zurück sortieren nach neusten zuerst
+        usort($filteredEntries, static function (array $left, array $right): int {
+            return strcmp($right['timestamp'], $left['timestamp']);
+        });
+    }
+
     if ($filterUnique) {
         $latestByAsin = [];
         $withoutAsin = [];
@@ -157,6 +184,9 @@ if ($filterDirection === 'increase') {
     $activeFilters[] = 'Nur Erhoehung';
 } elseif ($filterDirection === 'decrease') {
     $activeFilters[] = 'Nur Absenkung';
+}
+if ($filterExactDuplicates) {
+    $activeFilters[] = 'Ohne exakte Duplikate';
 }
 if ($filterUnique) {
     $activeFilters[] = 'Nur neueste pro ASIN';
@@ -528,7 +558,7 @@ function formatValue($value): string
             position: sticky;
             top: 0;
             z-index: 1;
-            box-shadow: 0 1px 0 var(--stroke); /* Better than border-bottom for sticky */
+            box-shadow: 0 1px 0 var(--stroke);
         }
 
         tr {
@@ -688,6 +718,12 @@ function formatValue($value): string
                         <label>
                             <input type="checkbox" name="unique" value="1" <?= $filterUnique ? 'checked' : '' ?>>
                             Nur neueste pro ASIN
+                        </label>
+                    </div>
+                    <div class="checkbox-wrapper">
+                        <label>
+                            <input type="checkbox" name="exact_duplicates" value="1" <?= $filterExactDuplicates ? 'checked' : '' ?>>
+                            Duplikate filtern
                         </label>
                     </div>
                 </div>
