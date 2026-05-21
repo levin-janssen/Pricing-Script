@@ -38,56 +38,66 @@ foreach ($marketplaces as $key => $value) {
 
     foreach ($asins as $key => $asin) {
         $asin = $asin["ASIN"];
+        Logger::info("Process: $asin ");
         
-        if (str_ends_with($asin, '_FBA')) {
-            Logger::info("FBA-Artikel erkannt und übersprungen (kein Bestandsupdate)", ['asin' => $asin, 'marketplace' => $marketplaceId]);
-            echo "Überspringe FBA-Artikel: ASIN $asin endet auf _FBA.<br>\r\n";
-            continue; 
-        }
-
         $statement = $dbConnection->prepare("SELECT sku FROM tric4calc.Artikel WHERE ASIN = '$asin'");
         $statement->execute();
         $result = $statement->fetch(PDO::FETCH_ASSOC);
         $sku = $result["sku"];
+        
+        // 1. Preisberechnung (wird für FBA und FBM ausgeführt)
         $preis = processAsin($asin);
-        
-        // 1. Alten Amazon-Bestand abfragen (nur für den Abgleich)
-        $amazonQuantity = getQuantityBySku($sku, "A6F5BRV91OMPP", $marketplaceId);
-        
-        // 2. Echten Bestand aus Tricoma abfragen (die Hilfsfunktion aus der vorherigen Antwort)
-        $tricomaQuantity = getTricomaStockByAsin($asin);
 
-        // 3. Bestände abgleichen und ggf. warne
-        if ($amazonQuantity !== $tricomaQuantity) {
-            Logger::warning("Bestandsabweichung festgestellt! Amazon-Bestand unterscheidet sich vom Tricoma-Lager.", [
-                'sku' => $sku, 
-                'asin' => $asin, 
-                'amazon_bisher' => $amazonQuantity, 
-                'tricoma_neu' => $tricomaQuantity
-            ]);
-            echo "Achtung: Bestandsabweichung für SKU $sku (Amazon: $amazonQuantity | Tricoma: $tricomaQuantity)<br>\r\n";
+        // 2. FBA-Prüfung für das Bestandsupdate
+        $isFBA = (substr($sku, -strlen('_FBA')) === '_FBA'); // Prüft, ob die SKU mit "_FBA" endet
+        Logger::info("IsFBA: $isFBA");
+
+        if ($isFBA) {
+            Logger::info("FBA-Artikel erkannt: Bestand wird nicht übermittelt, nur Preisupdate.", ['asin' => $asin, 'sku' => $sku]);
+            echo "FBA-Artikel: Überspringe Bestandsupdate für ASIN $asin.<br>\r\n";
         } else {
-            Logger::info("Bestand ist synchron", ['sku' => $sku, 'quantity' => $tricomaQuantity]);
+            // --- FBM-ARTIKEL: BESTANDSAKTUALISIERUNG ---
+            
+            // Alten Amazon-Bestand abfragen (nur für den Abgleich)
+            $amazonQuantity = getQuantityBySku($sku, "A6F5BRV91OMPP", $marketplaceId);
+            
+            // Echten Bestand aus Tricoma abfragen
+            $tricomaQuantity = getTricomaStockByAsin($asin);
+
+            // Bestände abgleichen und ggf. warnen
+            if ($amazonQuantity !== $tricomaQuantity) {
+                Logger::warning("Bestandsabweichung festgestellt! Amazon-Bestand unterscheidet sich vom Tricoma-Lager.", [
+                    'sku' => $sku, 
+                    'asin' => $asin, 
+                    'amazon_bisher' => $amazonQuantity, 
+                    'tricoma_neu' => $tricomaQuantity
+                ]);
+                echo "Achtung: Bestandsabweichung für SKU $sku (Amazon: $amazonQuantity | Tricoma: $tricomaQuantity)<br>\r\n";
+            } else {
+                Logger::info("Bestand ist synchron", ['sku' => $sku, 'quantity' => $tricomaQuantity]);
+            }
+
+            // Tricoma-Menge in den Amazon-Feed schreiben
+            $AmazonBuilder->addHandlingTime($sku, "0", $tricomaQuantity);
+            Logger::info("Tricoma-Lagerbestand an Amazon übermittelt", ['sku' => $sku, 'quantity' => $tricomaQuantity]);
+            
+            if ($tricomaQuantity === 0) {
+                Logger::warning("Achtung: Tricoma-Lagerbestand ist 0!", ['sku' => $sku, 'asin' => $asin]);
+            }
         }
 
-        // 4. Tricoma-Menge an Amazon übergeben
-        $AmazonBuilder->addHandlingTime($sku, "0", $tricomaQuantity);
-        Logger::info("Tricoma-Lagerbestand an Amazon übermittelt", ['sku' => $sku, 'quantity' => $tricomaQuantity]);
-        
-        if ($tricomaQuantity === 0) {
-            Logger::warning("Achtung: Tricoma-Lagerbestand ist 0!", ['sku' => $sku, 'asin' => $asin]);
-        }
-
+        // 3. Preis-Aktualisierung (wird für FBA und FBM ausgeführt)
         if($preis == null){
             echo "Kein neuer Preis für ASIN $asin gesetzt <br>\r\n";
             Logger::warning("Kein neuer Preis gesetzt", ['asin' => $asin, 'sku' => $sku]);
-            continue;
-        }
-
+            continue; // Bricht den restlichen Durchlauf ab, da kein Preis da ist
+        } 
+        
         if(updateAmazonProductPrice( $sku, $preis,  "PRODUCT", $marketplaceId, $currencyCode)){
             echo "Preis für SKU $sku wurde erfolgreich auf $preis gesetzt.<br>\r\n";
             Logger::info("Preis erfolgreich gesetzt", ['sku' => $sku, 'asin' => $asin, 'preis' => $preis, 'marketplaceId' => $marketplaceId]);
             $AmazonBuilder->addBusinessPrice($sku,  "EUR", $marketplaceId, ((float)($preis-0.01)));
+            
             if($marketplaceId == "A1PA6795UKMFR9"){
                 $ManoManobuilderDE->addOffer($sku, ($preis));
             } elseif($marketplaceId == "A13V1IB3VIYZZH"){
@@ -229,7 +239,7 @@ function processAsin($asin) {
                 $counter = 4;
                 $neuerPreis = $eigenerPreis + $step_size;
             }
-            if($counter == 4){
+            elseif($counter == 4){
                 $neuerPreis = $eigenerPreis + $step_size;
             }else {
                 $neuerPreis = $eigenerPreis;
@@ -273,7 +283,7 @@ function processAsin($asin) {
         } elseif($counter == 5){
             $neuerPreis = $eigenerPreis - $step_size;
             $counter = 4;
-        }elseif($counter = 6){
+        }elseif($counter == 6){
             $neuerPreis = $niedrigsterPreis - $step_size;
             $counter = 3;
         }else{
