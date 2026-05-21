@@ -305,6 +305,141 @@ if ($items_not_changed > 0) {
     echo "(Bei den anderen <b>" . $items_not_changed . "</b> war der Preis identisch oder es lag kein Angebot mehr auf Amazon vor)";
 }
 
+// --- Neuer Teil: Bestandsabweichungen der letzten Stunden aus den Logs lesen ---
+echo "<br><hr><br>";
+echo "<h3>Bestandsanpassungen (letzte {$hoursToCheck} Stunden)</h3>";
+
+$cutoffTime = time() - ($hoursToCheck * 3600);
+$logFilesToCheck = [];
+
+// Falls das Zeitfenster über Mitternacht ragt, gestriges Log zuerst prüfen
+if (date('Y-m-d', $cutoffTime) !== date('Y-m-d')) {
+    $logFilesToCheck[] = APP_ROOT . '/logs/app_' . date('Y-m-d', $cutoffTime) . '.log';
+}
+$logFilesToCheck[] = APP_ROOT . '/logs/app_' . date('Y-m-d') . '.log';
+
+$echteAbweichungen = [];
+$nullAbweichungen = [];
+$lastStatePerSku = [];
+
+foreach (array_unique($logFilesToCheck) as $logFile) {
+    if (file_exists($logFile)) {
+        $handle = fopen($logFile, 'rb');
+        if ($handle) {
+            while (($line = fgets($handle)) !== false) {
+                if (strpos($line, 'Bestandsabweichung festgestellt!') !== false) {
+                    if (preg_match('/^\[(.*?)\]/', $line, $dateMatches)) {
+                        $logTime = strtotime($dateMatches[1]);
+                        
+                        // ZEITPRÜFUNG ZUERST: Wir betrachten nur Einträge innerhalb des Fensters
+                        if ($logTime >= $cutoffTime) {
+                            if (preg_match('/Context:\s*(\{.*?\})$/', trim($line), $contextMatches)) {
+                                $context = json_decode($contextMatches[1], true);
+                                if ($context) {
+                                    $sku = (string)($context['sku'] ?? '-');
+                                    $asin = (string)($context['asin'] ?? '-');
+                                    $amazonBisher = array_key_exists('amazon_bisher', $context) ? $context['amazon_bisher'] : null;
+                                    $tricomaNeu = $context['tricoma_neu'] ?? 0;
+                                    
+                                    $amazonHash = $amazonBisher === null ? 'null' : (string)$amazonBisher;
+                                    $currentHash = $asin . '|' . $amazonHash . '|' . (string)$tricomaNeu;
+                                    
+                                    // Filtert Duplikate jetzt nur noch innerhalb des aktuellen Fensters
+                                    if (isset($lastStatePerSku[$sku]) && $lastStatePerSku[$sku] === $currentHash) {
+                                        continue;
+                                    }
+                                    
+                                    $lastStatePerSku[$sku] = $currentHash;
+                                    
+                                    $amazonCalc = $amazonBisher === null ? 0 : (int)$amazonBisher;
+                                    $diff = $tricomaNeu - $amazonCalc;
+                                    $diffColor = $diff > 0 ? 'green' : ($diff < 0 ? 'red' : 'black');
+                                    
+                                    $entry = [
+                                        'time' => $dateMatches[1],
+                                        'sku' => $sku,
+                                        'asin' => $asin,
+                                        'amazon_bisher' => $amazonBisher,
+                                        'tricoma_neu' => $tricomaNeu,
+                                        'diff' => $diff,
+                                        'diffColor' => $diffColor
+                                    ];
+
+                                    if ($amazonBisher === null) {
+                                        $nullAbweichungen[] = $entry;
+                                    } else {
+                                        $echteAbweichungen[] = $entry;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            fclose($handle);
+        }
+    }
+}
+
+$echteAbweichungen = array_reverse($echteAbweichungen);
+$nullAbweichungen = array_reverse($nullAbweichungen);
+
+// --- TABELLE 1: ECHTE ABWEICHUNGEN ---
+echo "<h4 style='margin-bottom: 5px; font-family: Arial, sans-serif;'>Wichtige Anpassungen (Echte Differenzen)</h4>";
+if (!empty($echteAbweichungen)) {
+    echo "<table border='1' cellpadding='6' style='border-collapse: collapse; text-align: left; font-family: Arial, sans-serif; font-size: 14px; width: 100%; max-width: 800px; border-color: #bbbbbb;'>";
+    echo "<tr style='background-color: #f2f2f2; color: #333;'>
+            <th>Zeitpunkt</th>
+            <th>SKU</th>
+            <th>ASIN</th>
+            <th>Amazon (bisher)</th>
+            <th>Tricoma (neu)</th>
+            <th>Differenz</th>
+          </tr>";
+          
+    foreach ($echteAbweichungen as $change) {
+        $sign = $change['diff'] > 0 ? '+' : '';
+        echo "<tr>";
+        echo "<td>" . htmlspecialchars($change['time']) . "</td>";
+        echo "<td>" . htmlspecialchars((string)$change['sku']) . "</td>";
+        echo "<td>" . htmlspecialchars((string)$change['asin']) . "</td>";
+        echo "<td>" . htmlspecialchars((string)$change['amazon_bisher']) . "</td>";
+        echo "<td>" . htmlspecialchars((string)$change['tricoma_neu']) . "</td>";
+        echo "<td style='color: {$change['diffColor']}; font-weight: bold;'>{$sign}{$change['diff']}</td>";
+        echo "</tr>";
+    }
+    echo "</table><br>";
+} else {
+    echo "<p style='font-family: Arial, sans-serif; color: #555;'><i>Keine echten Bestandsabweichungen in den letzten {$hoursToCheck} Stunden.</i></p>";
+}
+
+// --- TABELLE 2: NULL-WERTE ---
+if (!empty($nullAbweichungen)) {
+    $nullCount = count($nullAbweichungen);
+    
+    echo "<hr style='border: 0; border-top: 1px dashed #cccccc; margin: 25px 0 15px 0;'>";
+    echo "<h4 style='margin-bottom: 5px; color: #666666; font-family: Arial, sans-serif;'>Artikel ohne vorherigen Amazon-Bestand ({$nullCount}x null)</h4>";
+    
+    echo "<table border='1' cellpadding='4' style='border-collapse: collapse; text-align: left; font-family: Arial, sans-serif; font-size: 12px; color: #666666; width: 100%; max-width: 800px; border-color: #dddddd;'>";
+    echo "<tr style='background-color: #f9f9f9;'>
+            <th>Zeitpunkt</th>
+            <th>SKU</th>
+            <th>ASIN</th>
+            <th>Tricoma (neu)</th>
+          </tr>";
+          
+    foreach ($nullAbweichungen as $change) {
+        echo "<tr>";
+        echo "<td>" . htmlspecialchars($change['time']) . "</td>";
+        echo "<td>" . htmlspecialchars((string)$change['sku']) . "</td>";
+        echo "<td>" . htmlspecialchars((string)$change['asin']) . "</td>";
+        echo "<td>" . htmlspecialchars((string)$change['tricoma_neu']) . "</td>";
+        echo "</tr>";
+    }
+    echo "</table><br>";
+}
+// --- Ende des neuen Teils ---
+
 if ($items_changed == 0) {
     Logger::info("No price changes found among products");
 }
