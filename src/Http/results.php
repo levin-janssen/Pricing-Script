@@ -172,21 +172,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_settings']) &&
 // --- Fetch Product Data (if no initial error and ASIN is valid) ---
 if (empty($db_error) && !empty($selectedAsin)) {
     try {
-        // 1. Get general product information from Artikel table
+        // 1. Get general product information and price limits in one round-trip
         $stmtArtikel = $dbConnection->prepare("
-            SELECT ID, artikelname, sku
-            FROM Artikel
-            WHERE asin = :asin
+            SELECT A.ID, A.artikelname, A.sku,
+                   P.min_preis, P.max_preis, P.stepsize_small, P.stepsize_big
+            FROM Artikel A
+            LEFT JOIN Preisgrenzen P
+                ON P.ASIN = A.asin AND P.Land = :land
+            WHERE A.asin = :asin
             LIMIT 1
         ");
         $stmtArtikel->bindParam(':asin', $selectedAsin);
+        $stmtArtikel->bindParam(':land', $current_marketplace_code);
         $stmtArtikel->execute();
-        $productArtikelDetails = $stmtArtikel->fetch(PDO::FETCH_ASSOC);
+        $productRow = $stmtArtikel->fetch(PDO::FETCH_ASSOC);
 
-        if (!$productArtikelDetails) {
+        if (!$productRow) {
             $db_error = "Keine Artikeldetails für ASIN \"" . htmlspecialchars($selectedAsin) . "\" in der Tabelle 'Artikel' gefunden.";
         } else {
+            $productArtikelDetails = [
+                'ID' => $productRow['ID'],
+                'artikelname' => $productRow['artikelname'],
+                'sku' => $productRow['sku'],
+            ];
             $artikel_id_for_buybox = $productArtikelDetails['ID']; // Needed for Buybox queries
+
+            $hasPreisgrenzen = $productRow['min_preis'] !== null
+                || $productRow['max_preis'] !== null
+                || $productRow['stepsize_small'] !== null
+                || $productRow['stepsize_big'] !== null;
+            $productPreisgrenzen = $hasPreisgrenzen ? [
+                'min_preis' => $productRow['min_preis'],
+                'max_preis' => $productRow['max_preis'],
+                'stepsize_small' => $productRow['stepsize_small'],
+                'stepsize_big' => $productRow['stepsize_big'],
+            ] : null;
 
             $avg_sales_price_7d = 'N/A';
             // 4. Durchschnittlichen Amazon-Verkaufspreis der letzten 7 Tage abrufen
@@ -198,21 +218,23 @@ if (empty($db_error) && !empty($selectedAsin)) {
                     ");
                     $stmt_product_id->execute([':sku' => $productArtikelDetails['sku']]);
                     $product_id = $stmt_product_id->fetchColumn();
-                    $stmtAvgPrice = $dbConnectionTric->prepare("
-                        SELECT SUM(T1.einzelpreis * T1.anzahl) AS total_revenue_pre_vat,
-                               SUM(T1.anzahl) AS total_quantity
-                        FROM bestellungen_positionen AS T1
-                        JOIN bestellungen AS T2 ON T2.id = T1.bestellungsid
-                        WHERE T1.datum > DATE_SUB(NOW(), INTERVAL 7 DAY)
-                          AND T1.produktid = :product_id
-                          AND T2.werbekennzeichen IN (2,8) -- 2 wird als Amazon angenommen
-                    ");
-                    $stmtAvgPrice->bindParam(':product_id', $product_id, PDO::PARAM_INT);
-                    $stmtAvgPrice->execute();
-                    $salesSummary = $stmtAvgPrice->fetch(PDO::FETCH_ASSOC);
-                    if ($salesSummary && !empty($salesSummary['total_quantity'])) {
-                        $revenue_with_vat = (float) $salesSummary['total_revenue_pre_vat'] * 1.19;
-                        $avg_sales_price_7d = $revenue_with_vat / (int) $salesSummary['total_quantity'];
+                    if ($product_id) {
+                        $stmtAvgPrice = $dbConnectionTric->prepare("
+                            SELECT SUM(T1.einzelpreis * T1.anzahl) AS total_revenue_pre_vat,
+                                   SUM(T1.anzahl) AS total_quantity
+                            FROM bestellungen_positionen AS T1
+                            JOIN bestellungen AS T2 ON T2.id = T1.bestellungsid
+                            WHERE T1.datum > DATE_SUB(NOW(), INTERVAL 7 DAY)
+                              AND T1.produktid = :product_id
+                              AND T2.werbekennzeichen IN (2,8) -- 2 wird als Amazon angenommen
+                        ");
+                        $stmtAvgPrice->bindParam(':product_id', $product_id, PDO::PARAM_INT);
+                        $stmtAvgPrice->execute();
+                        $salesSummary = $stmtAvgPrice->fetch(PDO::FETCH_ASSOC);
+                        if ($salesSummary && !empty($salesSummary['total_quantity'])) {
+                            $revenue_with_vat = (float) $salesSummary['total_revenue_pre_vat'] * 1.19;
+                            $avg_sales_price_7d = $revenue_with_vat / (int) $salesSummary['total_quantity'];
+                        }
                     }
                 } catch (\PDOException $e) {
                     error_log("Fehler beim Abrufen des durchschnittlichen Verkaufspreises für ProduktID $artikel_id_for_buybox: " . $e->getMessage());
@@ -220,18 +242,7 @@ if (empty($db_error) && !empty($selectedAsin)) {
                 }
             }
 
-            // 2. Get price settings from Preisgrenzen table for the current ASIN and Land
-            $stmtPreisgrenzen = $dbConnection->prepare("
-                SELECT min_preis, max_preis, stepsize_small, stepsize_big
-                FROM Preisgrenzen
-                WHERE ASIN = :asin AND Land = :land
-                LIMIT 1
-            ");
-            $stmtPreisgrenzen->bindParam(':asin', $selectedAsin);
-            $stmtPreisgrenzen->bindParam(':land', $current_marketplace_code);
-            $stmtPreisgrenzen->execute();
-            $productPreisgrenzen = $stmtPreisgrenzen->fetch(PDO::FETCH_ASSOC);
-
+            // 2. Use price settings from the joined result (Preisgrenzen)
             if (!$productPreisgrenzen) {
                 // No specific price limits for this country, but Artikel exists.
                 // User can still see history, but form will be for creating new limits.
@@ -256,31 +267,8 @@ if (empty($db_error) && !empty($selectedAsin)) {
                 $form_step_big = '0.10';
 
 
-            // 3. Fetch price history and latest prices from country-specific Buybox table
+            // 3. Fetch price history from country-specific Buybox table
             if (!empty($country_specific_buybox_table) && $artikel_id_for_buybox) {
-                // Get latest 'eigener_preis'
-                $stmtOwn = $dbConnection->prepare("SELECT bb.eigenerpreis AS eigener_preis FROM $country_specific_buybox_table bb WHERE bb.produktid = :produktid ORDER BY bb.datum DESC LIMIT 1");
-                $stmtOwn->bindParam(':produktid', $artikel_id_for_buybox, PDO::PARAM_INT);
-                $stmtOwn->execute();
-                $ownPriceResult = $stmtOwn->fetch(PDO::FETCH_ASSOC);
-                // Attach to $productArtikelDetails for display convenience, though it's dynamic
-                $productArtikelDetails['eigener_preis'] = $ownPriceResult ? $ownPriceResult['eigener_preis'] : 'N/A';
-
-                // Get latest 'niedrigster_preis'
-                $stmtLow = $dbConnection->prepare("SELECT bb.niedrigsterPreis AS niedrigster_preis FROM $country_specific_buybox_table bb WHERE bb.produktid = :produktid ORDER BY bb.datum DESC LIMIT 1");
-                $stmtLow->bindParam(':produktid', $artikel_id_for_buybox, PDO::PARAM_INT);
-                $stmtLow->execute();
-                $lowestPriceResult = $stmtLow->fetch(PDO::FETCH_ASSOC);
-                $productArtikelDetails['niedrigster_preis'] = $lowestPriceResult ? $lowestPriceResult['niedrigster_preis'] : 'N/A';
-
-                // Get latest 'bbox_preis'
-                $stmtBBox = $dbConnection->prepare("SELECT bb.buyboxPreis AS bbox_preis FROM $country_specific_buybox_table bb WHERE bb.produktid = :produktid ORDER BY bb.datum DESC LIMIT 1");
-                $stmtBBox->bindParam(':produktid', $artikel_id_for_buybox, PDO::PARAM_INT);
-                $stmtBBox->execute();
-                $bboxPriceResult = $stmtBBox->fetch(PDO::FETCH_ASSOC);
-                $productArtikelDetails['bbox_preis'] = $bboxPriceResult ? $bboxPriceResult['bbox_preis'] : 'N/A';
-
-                // Get price history for the graph
                 $stmtHist = $dbConnection->prepare("
                     SELECT bb.datum, bb.eigenerpreis AS eigener_preis, bb.niedrigsterPreis AS niedrigster_preis, bb.buyboxPreis AS bbox_preis, bb.action, bb.counter, bb.isWinner
                     FROM $country_specific_buybox_table bb
@@ -290,6 +278,17 @@ if (empty($db_error) && !empty($selectedAsin)) {
                 $stmtHist->bindParam(':produktid', $artikel_id_for_buybox, PDO::PARAM_INT);
                 $stmtHist->execute();
                 $priceHistory = $stmtHist->fetchAll(PDO::FETCH_ASSOC);
+
+                // Use the latest history entry as the current price snapshot
+                $productArtikelDetails['eigener_preis'] = 'N/A';
+                $productArtikelDetails['niedrigster_preis'] = 'N/A';
+                $productArtikelDetails['bbox_preis'] = 'N/A';
+                if (!empty($priceHistory)) {
+                    $latestRow = $priceHistory[count($priceHistory) - 1];
+                    $productArtikelDetails['eigener_preis'] = $latestRow['eigener_preis'] !== null ? $latestRow['eigener_preis'] : 'N/A';
+                    $productArtikelDetails['niedrigster_preis'] = $latestRow['niedrigster_preis'] !== null ? $latestRow['niedrigster_preis'] : 'N/A';
+                    $productArtikelDetails['bbox_preis'] = $latestRow['bbox_preis'] !== null ? $latestRow['bbox_preis'] : 'N/A';
+                }
             } else {
                 if (empty($db_error) && $artikel_id_for_buybox) { // Only set this error if no other critical one exists
                     $db_error = "Buybox Tabellenname für " . htmlspecialchars($current_marketplace_code) . " nicht korrekt konfiguriert oder Artikel ID fehlt.";
@@ -470,6 +469,12 @@ if (empty($db_error) && !empty($selectedAsin)) {
 
 
             const rawPriceData = <?php echo json_encode($priceHistory); ?>;
+    const priceData = Array.isArray(rawPriceData)
+        ? rawPriceData.map(item => ({
+            ...item,
+            ts: item.datum ? moment(item.datum).valueOf() : null
+        }))
+        : [];
     let currentChart;
     const chartMinPreisLine = <?= isset($productPreisgrenzen['min_preis']) && $productPreisgrenzen['min_preis'] !== null ? json_encode((float) $productPreisgrenzen['min_preis']) : 'null'; ?>;
     const chartMaxPreisLine = <?= isset($productPreisgrenzen['max_preis']) && $productPreisgrenzen['max_preis'] !== null ? json_encode((float) $productPreisgrenzen['max_preis']) : 'null'; ?>;
@@ -667,19 +672,18 @@ if (empty($db_error) && !empty($selectedAsin)) {
             function filterDataByTimespan(dataToFilter, timespan) {
                 if (!Array.isArray(dataToFilter)) return [];
                 if (timespan === 'all') return dataToFilter;
-                const now = moment();
-                let cutoffDate;
+                let cutoffMs;
                 switch (timespan) {
-                    case '1': cutoffDate = moment(now).subtract(1, 'hours'); break;
-                    case '12': cutoffDate = moment(now).subtract(12, 'hours'); break;
-                    case '24': cutoffDate = moment(now).subtract(24, 'hours'); break;
-                    case '7': cutoffDate = moment(now).subtract(7, 'days'); break;
-                    case '30': cutoffDate = moment(now).subtract(30, 'days'); break;
-                    case '90': cutoffDate = moment(now).subtract(90, 'days'); break;
-                    case '365': cutoffDate = moment(now).subtract(365, 'days'); break;
+                    case '1': cutoffMs = moment().subtract(1, 'hours').valueOf(); break;
+                    case '12': cutoffMs = moment().subtract(12, 'hours').valueOf(); break;
+                    case '24': cutoffMs = moment().subtract(24, 'hours').valueOf(); break;
+                    case '7': cutoffMs = moment().subtract(7, 'days').valueOf(); break;
+                    case '30': cutoffMs = moment().subtract(30, 'days').valueOf(); break;
+                    case '90': cutoffMs = moment().subtract(90, 'days').valueOf(); break;
+                    case '365': cutoffMs = moment().subtract(365, 'days').valueOf(); break;
                     default: return dataToFilter;
                 }
-                return dataToFilter.filter(item => moment(item.datum).isSameOrAfter(cutoffDate));
+                return dataToFilter.filter(item => item.ts !== null && item.ts >= cutoffMs);
             }
 
             function filterDataByAction(dataToFilter, actionFilterValue) {
@@ -724,7 +728,7 @@ if (empty($db_error) && !empty($selectedAsin)) {
                         console.error("Konnte die URL des Berichtslinks nicht aktualisieren:", e);
                     }
                 }
-                if (!timespanValue || !actionFilterValue || !rawPriceData) { // Ensure controls and data exist
+                if (!timespanValue || !actionFilterValue || !Array.isArray(priceData)) { // Ensure controls and data exist
                     // console.log("Bedingungen für Chart-Update nicht erfüllt.");
                     if (document.getElementById('priceChart')) { // If canvas exists but no data, clear it or show message
                         if (currentChart) currentChart.destroy();
@@ -734,15 +738,15 @@ if (empty($db_error) && !empty($selectedAsin)) {
                     }
                     return;
                 }
-                const timeFilteredData = filterDataByTimespan(rawPriceData, timespanValue);
+                const timeFilteredData = filterDataByTimespan(priceData, timespanValue);
                 const finalFilteredData = filterDataByAction(timeFilteredData, actionFilterValue);
                 createChart(finalFilteredData);
             }
 
             document.addEventListener('DOMContentLoaded', () => {
-                if (document.getElementById('priceChart') && rawPriceData && rawPriceData.length > 0) {
+                if (document.getElementById('priceChart') && priceData && priceData.length > 0) {
                     updateChart();
-                } else if (document.querySelector('.chart-container') && (!rawPriceData || rawPriceData.length === 0)) {
+                } else if (document.querySelector('.chart-container') && (!priceData || priceData.length === 0)) {
                     document.querySelector('.chart-container').innerHTML = '<p style="text-align:center; padding: 20px;">Keine Preisdaten für Diagramm in Land <?= htmlspecialchars($current_marketplace_code) ?> verfügbar.</p>';
                 }
                 // Attach event listeners even if no initial data, for when filters change
