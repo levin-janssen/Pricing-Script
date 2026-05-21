@@ -2,6 +2,32 @@
 require_once __DIR__ . '/bootstrap.php';
 ini_set('default_charset',  'UTF-8');
 ini_set('error_log', APP_ROOT . '/error.log');
+
+$logRetentionDays = 30;
+$logDir = APP_ROOT . '/logs';
+$cleanupMarker = $logDir . '/.cleanup.last';
+$cleanupIntervalSeconds = 6 * 60 * 60; // Avoid re-scanning logs every run.
+
+if (is_dir($logDir)) {
+    $runCleanup = true;
+    if (is_file($cleanupMarker)) {
+        $lastRun = filemtime($cleanupMarker);
+        if ($lastRun !== false && (time() - $lastRun) < $cleanupIntervalSeconds) {
+            $runCleanup = false;
+        }
+    }
+
+    if ($runCleanup) {
+        $cutoff = time() - ($logRetentionDays * 86400);
+        foreach (glob($logDir . '/app_*.log') as $file) {
+            $mtime = filemtime($file);
+            if ($mtime !== false && $mtime < $cutoff) {
+                @unlink($file);
+            }
+        }
+        @file_put_contents($cleanupMarker, (string)time());
+    }
+}
 $dbConnection = new PDO('mysql:dbname=tric4calc;host=127.0.0.1;', 'root', '***REMOVED***');
 $dbConnection->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 $dbConnection->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_WARNING);
