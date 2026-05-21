@@ -31,13 +31,31 @@ if ($asin !== '') {
                 continue;
             }
 
+            $skuToAsin = [];
             foreach ($lines as $line) {
-                if (strpos($line, 'Bestandsabweichung festgestellt!') === false) {
+                if (!preg_match('/^\[(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\] \[[A-Z]+\] .*? \| Context: (.+)$/', $line, $matches)) {
                     continue;
                 }
-                if (stripos($line, $asin) === false) {
+
+                $context = json_decode(trim($matches[3]), true);
+                if (!is_array($context)) {
                     continue;
                 }
+
+                $sku = $context['sku'] ?? '';
+                $contextAsin = $context['asin'] ?? '';
+                if ($sku !== '' && preg_match('/^[A-Z0-9]{10}$/', (string)$contextAsin)) {
+                    $skuToAsin[$sku] = strtoupper((string)$contextAsin);
+                }
+            }
+
+            foreach ($lines as $line) {
+                $hasDeviation = strpos($line, 'Bestandsabweichung festgestellt!') !== false;
+                $hasSync = strpos($line, 'Bestand ist synchron') !== false;
+                if (!$hasDeviation && !$hasSync) {
+                    continue;
+                }
+
                 if (!preg_match('/^\[(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\] \[[A-Z]+\] .*? \| Context: (.+)$/', $line, $matches)) {
                     continue;
                 }
@@ -46,14 +64,29 @@ if ($asin !== '') {
                 if (!is_array($context)) {
                     $context = [];
                 }
-                if (($context['asin'] ?? '') !== $asin) {
+
+                $sku = $context['sku'] ?? '';
+                $entryAsin = $context['asin'] ?? ($sku !== '' ? ($skuToAsin[$sku] ?? '') : '');
+                $entryAsin = strtoupper((string)$entryAsin);
+                if (!preg_match('/^[A-Z0-9]{10}$/', $entryAsin)) {
+                    $entryAsin = '';
+                }
+                if ($entryAsin !== $asin) {
                     continue;
                 }
 
                 $amazon = $context['amazon_bisher'] ?? null;
                 $tricoma = $context['tricoma_neu'] ?? null;
-                $diff = null;
 
+                if ($hasSync) {
+                    $quantity = $context['quantity'] ?? null;
+                    if ($quantity !== null && $quantity !== '') {
+                        $amazon = $quantity;
+                        $tricoma = $quantity;
+                    }
+                }
+
+                $diff = null;
                 if (is_numeric($amazon) && is_numeric($tricoma)) {
                     $diff = (float)$tricoma - (float)$amazon;
                 }
@@ -62,8 +95,8 @@ if ($asin !== '') {
                     'date' => $matches[1],
                     'time' => $matches[2],
                     'timestamp' => $matches[1] . ' ' . $matches[2],
-                    'sku' => $context['sku'] ?? '',
-                    'asin' => $context['asin'] ?? '',
+                    'sku' => $sku,
+                    'asin' => $entryAsin,
                     'amazon_bisher' => $amazon,
                     'tricoma_neu' => $tricoma,
                     'diff' => $diff,
