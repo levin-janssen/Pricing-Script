@@ -1,0 +1,343 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preis Update</title>
+</head>
+<body>
+<?php
+
+    ini_set('default_charset', 'UTF-8');
+    mb_internal_encoding("UTF-8");
+    $dbConnection = new PDO('mysql:dbname=***REMOVED***;host=***REMOVED***;', '***REMOVED***', '***REMOVED***');
+    $dbConnection->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+    $dbConnection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
+    define("refresh_token", "***REMOVED***");
+	define("lwa_app_id", "***REMOVED***");
+#	define( "lwa_client_secret", "amzn1.oa2-cs.v1.70ec05fcdae1d61e0898f7775a5ca2fd61ab3c5b54df55bf4f90bb4010139fe3");
+	define( "lwa_client_secret", "***REMOVED***");
+    $logFile = 'preis_update_log.txt';
+    
+    $twoHoursAgo = date( 'Y-m-d - H:i:s', strtotime( '-2 hours'));
+ 
+    echo "Es wird nach Produktänderungen <b> seit ".substr($twoHoursAgo,13)." </b> gesucht <br>";
+    // $twoHoursAgo = "2023-09-09 - 08:10:09";
+    $produktIds = [];
+
+    // Fetch IDs from 'lager_umbuchungen'
+    $statement = $dbConnection->prepare("
+        SELECT produktId 
+        FROM lager_umbuchungen 
+        WHERE STR_TO_DATE(datum_gebucht, '%Y-%m-%d - %H:%i:%s') >= STR_TO_DATE(:twoHoursAgo, '%Y-%m-%d - %H:%i:%s')
+    ");
+    $statement->execute([':twoHoursAgo' => $twoHoursAgo]);
+    $result = $statement->fetchAll(PDO::FETCH_COLUMN);
+
+    $produktIds = array_merge($produktIds, $result);
+
+    // Fetch IDs from 'lager_ausbuchungen'
+    $statement = $dbConnection->prepare("
+        SELECT produktId 
+        FROM lager_ausbuchungen 
+        WHERE STR_TO_DATE(datum_ausgebucht, '%Y-%m-%d - %H:%i:%s') >= STR_TO_DATE(:twoHoursAgo, '%Y-%m-%d - %H:%i:%s')
+    ");
+    $statement->execute([':twoHoursAgo' => $twoHoursAgo]);
+    $result = $statement->fetchAll(PDO::FETCH_COLUMN);
+
+    $produktIds = array_merge($produktIds, $result);
+
+    // Fetch IDs from 'lager_einbuchungen'
+    $statement = $dbConnection->prepare("
+        SELECT produktId 
+        FROM lager_einbuchungen 
+        WHERE STR_TO_DATE(datum_eingebucht, '%Y-%m-%d - %H:%i:%s') >= STR_TO_DATE(:twoHoursAgo, '%Y-%m-%d - %H:%i:%s')
+    ");
+    $statement->execute([':twoHoursAgo' => $twoHoursAgo]);
+    $result = $statement->fetchAll(PDO::FETCH_COLUMN);
+
+    $produktIds = array_merge($produktIds, $result);
+
+    // If no product IDs found, exit early
+    if (empty($produktIds)) {
+        $log= " * (".date('d.m.Y H:i:s').") Info:  keine Produkte gefunden\r\n"; 
+        file_put_contents($logFile, $log, FILE_APPEND | LOCK_EX);
+        echo "Keine Produktänderungen gefunden.";
+        exit;
+    }
+
+    echo "<b>".count($produktIds)."</b> Produkte gefunden ";
+
+    // Remove duplicate IDs
+    $produktIds = array_unique($produktIds);
+    $produktIds = array_map('strval', $produktIds);
+
+    echo "davon <b>".count($produktIds)."</b> einzigartig <br>";
+
+    // Convert product IDs into a string for SQL IN clause
+    $list = "'" . implode("','", $produktIds) . "'";
+
+    // Fetch ID - ASIN pairs from 'produkte_felder_werte'
+    $statement = $dbConnection->prepare("
+        SELECT pfw1.produktid, pfw1.wert1 AS 'asin', pfw2.wert1 AS 'sku'
+        FROM produkte_felder_werte AS pfw1
+        INNER JOIN produkte_felder_werte AS pfw2 ON pfw1.produktid = pfw2.produktid
+        WHERE pfw1.feldid = '57' 
+        AND pfw2.feldid = '44'
+        AND pfw1.produktid IN ($list)
+    ");
+
+
+    $statement->execute();
+    $result = $statement->fetchAll(PDO::FETCH_ASSOC);
+
+
+    $asins_with_skus = array();
+    foreach ($result as $value) {
+        $asins_with_skus[] = array($value["asin"], $value["sku"]);
+    }
+
+    $asins = array_column($asins_with_skus, 0);
+
+    $chunkSize = 20;
+    $data = [];
+
+    if (empty($asins)) {
+        $log= " * (".date('d.m.Y H:i:s').") Info:  keine Artikel auf Amazon gefunden\r\n"; 
+        file_put_contents($logFile, $log, FILE_APPEND | LOCK_EX);
+        echo "Keine Produkte gefunden.";
+        exit;
+    }
+
+    foreach (array_chunk($asins, $chunkSize) as $chunk) {
+        $prices = getOwnPricesByASIN($chunk);
+        if(isset($prices["payload"])){
+            $data = array_merge($data, $prices["payload"]);
+            sleep(20);
+        } else{
+            $log= " * (".date('d.m.Y H:i:s').") Info:  Fehler in der Amazon Abfrage!\r\n";
+            file_put_contents($logFile, $log, FILE_APPEND | LOCK_EX);
+            $log= " * \$prices: (".date('d.m.Y H:i:s').") ".var_dump($prices)."\r\n";
+            file_put_contents($logFile, $log, FILE_APPEND | LOCK_EX);
+        }
+    }
+
+    $final = [];
+    $items_changed = 0;
+
+    echo "
+        <br>
+        <table style='border-collapse: collapse;'>
+        <tr>
+            <th style='text-align: left; padding: 5px;'>ProduktID</th>
+            <th style='text-align: left; padding: 5px;'>ASIN</th>
+            <th style='text-align: left; padding: 5px;'>SKU</th>
+            <th style='text-align: left; padding: 5px;'>neuer Preis (netto)</th>
+            <th style='text-align: left; padding: 5px;'>alter Preis (netto)</th>
+            <th style='text-align: left; padding: 5px;'>Änderung</th>
+            <th style='text-align: left; padding: 5px;'>Titel</th>
+        </tr>
+    ";
+    foreach($data as $value){
+        if(isset($value["ASIN"])){
+            if(isset($value["Product"]["Offers"][0]["BuyingPrice"]["ListingPrice"]["Amount"]) && isset($value["Product"]["Offers"][0]["SellerSKU"])){
+                $asin = $value["ASIN"];;
+                $price = $value["Product"]["Offers"][0]["BuyingPrice"]["ListingPrice"]["Amount"];
+                $price = round((floatval($price) / (1 + 19 / 100)),2);
+                foreach ($result as $item) {
+                    if ($item['asin'] === $asin) {
+                        $produktid = $item['produktid'];
+                        break;
+                    }
+                }
+                $sku = null;
+                foreach ($asins_with_skus as $item) {
+                    if ($item[0] === $asin) {
+                        $sku = $item[1];
+                        break; 
+                    }
+                }
+
+                $statement = $dbConnection->prepare("
+                    SELECT einzelpreis 
+                    FROM produkte 
+                    WHERE ID = :produktid
+                ");
+                $statement->execute(array(":produktid" => $produktid));
+                $query_result = $statement->fetchAll(PDO::FETCH_COLUMN);
+                $old_price = round($query_result[0],2);
+                $difference = round($price - $old_price,2);
+                $name = " ";
+                if($difference > 0){
+                    $difference = "+".$difference;
+                }
+
+                if($old_price != $price){
+                    if ($sku == $value["Product"]["Offers"][0]["SellerSKU"]) {                    
+                        echo "
+                            <tr>
+                                <td style='border: 1px solid #ddd; padding: 5px;'>$produktid</td>
+                                <td style='border: 1px solid #ddd; padding: 5px;'>$asin</td>
+                                <td style='border: 1px solid #ddd; padding: 5px;'>$sku</td>
+                                <td style='border: 1px solid #ddd; padding: 5px;'>$price"."€</td>
+                                <td style='border: 1px solid #ddd; padding: 5px;'>$old_price"."€</td>";
+
+                        // Calculate the percentage difference
+                        $percent_diff = 0;
+                        if ($old_price != 0) { // Avoid division by zero
+                            $percent_diff = abs(($price - $old_price) / $old_price * 100);
+                        }
+
+                        // Determine background color based on percentage difference
+                        $bg_color = ($percent_diff > 30) ? "background-color: #ffff00;" : "";
+
+                        // Determine text color based on whether difference is positive or negative
+                        if ($difference > 0) {
+                            echo "<td style='color: green; border: 1px solid #ddd; padding: 5px; $bg_color'>$difference"."€</td>";
+                        } else {
+                            echo "<td style='color: red; border: 1px solid #ddd; padding: 5px; $bg_color'>$difference"."€</td>";
+                        }
+                                
+                        
+
+                        $final[] = [
+                            'ASIN' => $asin,
+                            'produktid' => $produktid,
+                            'price' => $price
+                        ];
+
+                        $stmt = $dbConnection->prepare("
+                            SELECT wert1
+                            FROM produkte_felder_werte 
+                            WHERE feldid = '40' 
+                            AND produktid = '$produktid'
+                        "); 
+                        $stmt->execute();
+                        $name_result = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                        $name = $name_result[0];
+                        $name = mb_convert_encoding($name, 'UTF-8', 
+                        mb_detect_encoding($name, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true));
+
+                        if ($percent_diff > 30) {
+                            $log = " > [WICHTIG](".date('d.m.Y H:i:s').") {$asin}: {$old_price}€ -> {$price}€ ({$difference}€) [".round($percent_diff,2)."%] - $name \r\n";
+                        } else {
+                            $log = " > (".date('d.m.Y H:i:s').") {$asin}: {$old_price}€ -> {$price}€ ({$difference}€) - $name \r\n";
+                        }
+                        file_put_contents($logFile, $log, FILE_APPEND | LOCK_EX);
+                        
+
+                        echo "
+                        <td style='border: 1px solid #ddd; padding: 5px;'>$name</td>
+                        </tr>
+                        ";
+
+                        $items_changed++;
+                    } else {
+                        $log = " * (".date('d.m.Y H:i:s').") Info:  {$asin} nicht geändert da unterschiedliche SKUs ($sku - ".$value["Product"]["Offers"][0]["SellerSKU"].")- $name \r\n"; 
+                        file_put_contents($logFile, $log, FILE_APPEND | LOCK_EX);
+                    }
+                }
+
+            }
+        }
+    }
+    echo "</table> <br>";
+
+    foreach($final as $value){
+        $stmt= $dbConnection->prepare(
+            "UPDATE produkte
+            SET einzelpreis=:price
+            WHERE ID=:id
+        ");
+        $stmt->execute(array(":price"=>$value["price"], ":id"=>$value["produktid"]));
+    }
+
+    
+    echo "Updates Erfolgreich abgeschlossen <br>";
+    echo "Es wurden <b> $items_changed </b> Produkte im Preis angepasst <br>";
+    $items_not_changed = count($produktIds) - $items_changed;
+    if($items_not_changed > 0) echo "(Bei den anderen <b>".$items_not_changed."</b> war der Preis identisch oder es lag kein Angebot mehr auf Amazon vor)";
+
+    if($items_changed == 0){
+        $log= " * (".date('d.m.Y H:i:s').") Info:  keine Preisänderungen unter den Produkten gefunden\r\n";
+        file_put_contents( $logFile, $log, FILE_APPEND | LOCK_EX);
+    }
+
+    function getAccessToken(){
+		try{
+			$baseUrl = "https://api.amazon.com/auth/O2/token";
+			$payload = [
+				"grant_type" => "refresh_token",
+				"refresh_token" => refresh_token,
+				"client_id" => lwa_app_id,
+				"client_secret" => lwa_client_secret,
+			];
+
+			$options = [
+				"http" => [
+					"method" => "POST",
+					"header" => "Content-Type: application/x-www-form-urlencoded",
+					"content" => http_build_query($payload),
+				],
+			];
+
+			$context = stream_context_create($options);
+			$response = file_get_contents($baseUrl, false, $context);
+
+			$data = json_decode($response, true);
+
+			return $data["access_token"];
+		} catch (Exception $err) {
+			echo $err->getMessage();
+			return null;
+		}
+	}
+
+    function getOwnPricesByASIN($asins){
+        $string = implode(",", $asins);
+		try{
+			$identifiers = $string;
+			$identifiersType = "Asin";
+			$marketplaceIds = "A1PA6795UKMFR9";
+
+			$requestParams = [
+				"MarketplaceId" => $marketplaceIds,
+				"Asins" => $identifiers,
+				"ItemType" => $identifiersType,
+			];
+
+			$query_string = http_build_query($requestParams);
+
+			$end_point = "https://sellingpartnerapi-eu.amazon.com";
+			$uri_path = "/products/pricing/v0/price";
+
+			$uri = "$end_point$uri_path?$query_string";
+
+			$headers = array(
+				"x-amz-access-token: " . getAccessToken(),
+			);
+
+			$ch = curl_init($uri);
+			curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+			$response = curl_exec($ch);
+			curl_close($ch);
+
+			$data = json_decode($response, true);
+
+			return $data;
+		} catch (Exception $err) {
+            global $logFile;
+			$msg = $err->getMessage();
+            echo $msg;
+            $log= " * Error: (".date('d.m.Y H:i:s').") {$msg}\r\n"; 
+
+            file_put_contents($logFile, $log, FILE_APPEND | LOCK_EX);
+			return null;
+		}
+	}
+
+?>
+</body>
+</html>

@@ -321,6 +321,46 @@ function getOwnPriceBySKU($sku, $marketplaceId = "A1PA6795UKMFR9")
     }
 }
 
+function getOwnPricesByASIN($asins, $marketplaceId = "A1PA6795UKMFR9")
+{
+    try {
+        $string = implode(",", $asins);
+        $identifiers = $string;
+        $identifiersType = "Asin";
+
+        $requestParams = [
+            "MarketplaceId" => $marketplaceId,
+            "Asins" => $identifiers,
+            "ItemType" => $identifiersType,
+        ];
+
+        $query_string = http_build_query($requestParams);
+
+        $end_point = "https://sellingpartnerapi-eu.amazon.com";
+        $uri_path = "/products/pricing/v0/price";
+
+        $uri = "$end_point$uri_path?$query_string";
+
+        $headers = array(
+            "x-amz-access-token: " . getAccessToken(),
+        );
+
+        $ch = curl_init($uri);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        $data = json_decode($response, true);
+
+        return $data;
+    } catch (Exception $err) {
+        Logger::error("Error in getOwnPricesByASIN", ['error' => $err->getMessage()]);
+        return null;
+    }
+}
+
 function getSkusByASIN($asin)
 {
     try {
