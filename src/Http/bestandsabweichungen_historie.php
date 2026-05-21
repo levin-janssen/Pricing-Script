@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 date_default_timezone_set('Europe/Berlin');
 
+require_once APP_ROOT . '/config/marketplaces.php';
+
 $logDir = APP_ROOT . '/logs';
 $asinRaw = isset($_GET['asin']) ? trim((string)$_GET['asin']) : '';
 $asin = '';
 $warning = '';
 $error = '';
 $entries = [];
+$selectedCountry = isset($_GET['country']) ? strtoupper(trim((string)$_GET['country'])) : '';
+if ($selectedCountry === '' || !isset($marketplaces[$selectedCountry])) {
+    $selectedCountry = isset($marketplaces['DE']) ? 'DE' : (array_key_first($marketplaces) ?? '');
+}
 
 if ($asinRaw !== '') {
     $asinRaw = strtoupper($asinRaw);
@@ -267,6 +273,15 @@ function formatValue($value): string
             gap: 10px;
             margin-top: 16px;
         }
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 16px;
+        }
+        .actions a {
+            text-decoration: none;
+        }
         .stat {
             padding: 10px 14px;
             border-radius: 12px;
@@ -338,6 +353,14 @@ function formatValue($value): string
             <form method="get" class="search-row">
                 <label for="asin">ASIN</label>
                 <input type="text" id="asin" name="asin" value="<?= h($asinRaw) ?>" placeholder="B000000000">
+                <label for="country">Land</label>
+                <select id="country" name="country">
+                    <?php foreach ($marketplaces as $code => $details): ?>
+                        <option value="<?= h($code) ?>" <?= $code === $selectedCountry ? 'selected' : '' ?>>
+                            <?= h($details['name']) ?> (<?= h($code) ?>)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
                 <button type="submit">Historie laden</button>
             </form>
             <?php if ($warning): ?>
@@ -353,6 +376,11 @@ function formatValue($value): string
                         <div class="stat">Von: <?= h($entries[0]['timestamp']) ?></div>
                         <div class="stat">Bis: <?= h($entries[count($entries) - 1]['timestamp']) ?></div>
                     <?php endif; ?>
+                </div>
+                <div class="actions">
+                    <a href="results.php?asin=<?= urlencode($asin) ?>&country=<?= urlencode($selectedCountry) ?>">
+                        <button type="button">Zur Ergebnis-Seite</button>
+                    </a>
                 </div>
                 <?php if (!empty($entries)): ?>
                     <div class="chart-controls">
