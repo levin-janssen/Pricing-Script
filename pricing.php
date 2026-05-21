@@ -38,7 +38,6 @@ foreach ($marketplaces as $key => $value) {
 
     foreach ($asins as $key => $asin) {
         $asin = $asin["ASIN"];
-        Logger::info("Process: $asin ");
         
         $statement = $dbConnection->prepare("SELECT sku FROM tric4calc.Artikel WHERE ASIN = '$asin'");
         $statement->execute();
@@ -50,7 +49,6 @@ foreach ($marketplaces as $key => $value) {
 
         // 2. FBA-Prüfung für das Bestandsupdate
         $isFBA = (substr($sku, -strlen('_FBA')) === '_FBA'); // Prüft, ob die SKU mit "_FBA" endet
-        Logger::info("IsFBA: $isFBA");
 
         if ($isFBA) {
             Logger::info("FBA-Artikel erkannt: Bestand wird nicht übermittelt, nur Preisupdate.", ['asin' => $asin, 'sku' => $sku]);
@@ -74,7 +72,7 @@ foreach ($marketplaces as $key => $value) {
                 ]);
                 echo "Achtung: Bestandsabweichung für SKU $sku (Amazon: $amazonQuantity | Tricoma: $tricomaQuantity)<br>\r\n";
             } else {
-                Logger::info("Bestand ist synchron", ['sku' => $sku, 'quantity' => $tricomaQuantity]);
+                Logger::info("Bestand ist synchron", ['sku' => $sku, 'asin' => $asin, 'quantity' => $tricomaQuantity]);
             }
 
             // Tricoma-Menge in den Amazon-Feed schreiben
