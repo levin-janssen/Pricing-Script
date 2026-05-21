@@ -142,201 +142,393 @@ function formatValue($value): string
     <title>ASIN Historie</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Source+Serif+4:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/moment"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment"></script>
     <style>
         :root {
-            --ink: #1c1c1c;
-            --muted: #60646c;
-            --accent: #2bb4ff;
+            --ink: #0f172a;
+            --muted: #64748b;
+            --muted-light: #94a3b8;
+            --accent: #ea580c;
             --surface: #ffffff;
             --surface-soft: #f8fafc;
-            --stroke: #e4e7ec;
-            --shadow: 0 12px 30px rgba(16, 24, 40, 0.12);
-            --radius: 16px;
+            --stroke: #e2e8f0;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --ring: rgba(234, 88, 12, 0.25);
         }
+        
         * {
             box-sizing: border-box;
-        }
-        body {
-            font-family: "Space Grotesk", "Segoe UI", sans-serif;
-            color: var(--ink);
-            background: radial-gradient(900px circle at top right, #eff7ff 0%, #f7f9fc 45%, #f3f7f5 70%, #f4f4f4 100%);
             margin: 0;
-            padding: 32px 20px 60px;
+            padding: 0;
         }
+
+        body {
+            font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+            color: var(--ink);
+            background: radial-gradient(1200px circle at top right, #fff1e6 0%, #f2f6ff 42%, #eefbf7 70%, #f4f4f4 100%);
+            background-attachment: fixed;
+            padding: 40px 20px 80px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
         .page {
-            max-width: 1100px;
+            max-width: 1200px;
             margin: 0 auto;
         }
+
+        /* --- Header & Navigation --- */
         .topbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-            margin-bottom: 24px;
+            margin-bottom: 32px;
         }
+
         .back {
+            display: inline-flex;
+            align-items: center;
+            height: 36px;
+            padding: 0 16px;
+            border-radius: 999px;
+            border: 1px solid var(--stroke);
             text-decoration: none;
             color: var(--ink);
             background: var(--surface);
-            border: 1px solid var(--stroke);
-            padding: 8px 14px;
-            border-radius: 999px;
             font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow-sm);
         }
-        h1 {
-            font-size: 2.2rem;
-            margin: 0 0 6px;
+
+        .back:hover {
+            background: var(--surface-soft);
+            border-color: var(--muted-light);
+            transform: translateY(-1px);
         }
-        .subtitle {
-            font-family: "Source Serif 4", serif;
+
+        .header-text {
+            margin-bottom: 24px;
+        }
+
+        .header-text h1 {
+            font-size: 2.25rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+        }
+
+        .header-text .subtitle {
             color: var(--muted);
-            margin: 0;
+            font-size: 1rem;
         }
+
+        /* --- Panels --- */
         .panel {
             background: var(--surface);
-            padding: 20px 22px;
+            padding: 24px;
             border-radius: var(--radius);
             box-shadow: var(--shadow);
-            margin-bottom: 20px;
+            border: 1px solid var(--stroke);
+            margin-bottom: 24px;
         }
-        .search-row {
+
+        /* --- Forms & Controls --- */
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            align-items: flex-end;
+        }
+
+        .field {
             display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            align-items: center;
+            flex-direction: column;
+            gap: 8px;
         }
-        label {
+
+        .field label {
+            font-size: 0.85rem;
             font-weight: 600;
             color: var(--muted);
         }
-        input[type="text"] {
-            padding: 10px 12px;
-            border-radius: 10px;
-            border: 1px solid var(--stroke);
-            font-size: 0.95rem;
-            background: var(--surface-soft);
-            min-width: 200px;
-        }
+
+        input[type="text"],
         select {
-            padding: 8px 10px;
-            border-radius: 10px;
+            width: 100%;
+            height: 42px;
+            padding: 0 12px;
+            border-radius: var(--radius-sm);
             border: 1px solid var(--stroke);
+            font-family: inherit;
             font-size: 0.95rem;
-            background: var(--surface-soft);
+            background: var(--surface);
+            color: var(--ink);
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow-sm);
         }
+
+        input:hover, select:hover {
+            border-color: var(--muted-light);
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--ring);
+        }
+
         button {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            padding: 10px 16px;
-            border-radius: 999px;
+            justify-content: center;
+            height: 42px;
+            padding: 0 24px;
+            border-radius: var(--radius-sm);
             border: none;
-            background: linear-gradient(120deg, var(--accent), #5ad1ff);
-            color: #0f1c24;
+            background: var(--ink);
+            color: white;
+            font-family: inherit;
             font-weight: 600;
+            font-size: 0.95rem;
             cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow-sm);
+            white-space: nowrap;
         }
+
         button:hover {
+            background: #1e293b;
             transform: translateY(-1px);
-            box-shadow: 0 10px 20px rgba(43, 180, 255, 0.25);
+            box-shadow: var(--shadow);
         }
-        .warning {
-            color: #8a6d3b;
-            background: #fcf8e3;
-            border: 1px solid #faebcc;
-            padding: 10px;
-            border-radius: 10px;
-            margin-top: 12px;
+
+        .ghost-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: 42px;
+            padding: 0 24px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--stroke);
+            background: var(--surface);
+            color: var(--ink);
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow-sm);
         }
-        .error {
-            color: #a94442;
-            background: #f2dede;
-            border: 1px solid #ebccd1;
-            padding: 10px;
-            border-radius: 10px;
-            margin-top: 12px;
+
+        .ghost-button:hover {
+            background: var(--surface-soft);
+            border-color: var(--muted-light);
         }
-        .stats {
+
+        /* --- Alerts --- */
+        .alert {
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            margin-top: 20px;
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+        
+        .alert.warning {
+            background: #fffbeb;
+            color: #b45309;
+            border: 1px solid #fde68a;
+        }
+
+        .alert.error {
+            background: #fef2f2;
+            color: #b91c1c;
+            border: 1px solid #fecaca;
+        }
+
+        /* --- Stats --- */
+        .hero-stats {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid var(--stroke);
+        }
+
+        .stat-card {
+            background: var(--surface-soft);
+            border: 1px solid var(--stroke);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            min-width: 140px;
+            flex: 1;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-top: 4px;
+            color: var(--ink);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* --- Toolbar (Above Chart) --- */
+        .toolbar {
             display: flex;
             flex-wrap: wrap;
-            gap: 12px;
-            margin-top: 16px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 16px;
         }
-        .chart-controls {
+
+        .toolbar-group {
             display: flex;
             align-items: center;
-            gap: 10px;
-            margin-top: 16px;
+            gap: 12px;
         }
-        .actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 16px;
-        }
-        .actions a {
-            text-decoration: none;
-        }
-        .stat {
-            padding: 10px 14px;
-            border-radius: 12px;
-            border: 1px solid var(--stroke);
-            background: var(--surface-soft);
-            font-weight: 600;
-        }
+
+        /* --- Chart --- */
         .chart-wrap {
             background: var(--surface);
             border-radius: var(--radius);
-            padding: 16px;
+            padding: 20px;
             border: 1px solid var(--stroke);
             box-shadow: var(--shadow);
-            height: 360px;
+            height: 400px;
+            margin-bottom: 24px;
         }
+
         .chart-wrap canvas {
             width: 100%;
-            min-height: 320px;
+            height: 100%;
         }
+
+        /* --- Table --- */
         .table-wrap {
-            margin-top: 20px;
             background: var(--surface);
             border-radius: var(--radius);
-            overflow: hidden;
             box-shadow: var(--shadow);
             border: 1px solid var(--stroke);
+            overflow-x: auto;
         }
+
         table {
             width: 100%;
             border-collapse: collapse;
-        }
-        th, td {
-            padding: 12px 14px;
-            border-bottom: 1px solid var(--stroke);
             text-align: left;
-            font-size: 0.95em;
+            white-space: nowrap;
         }
+
+        th, td {
+            padding: 16px 20px;
+            font-size: 0.95rem;
+        }
+
         th {
-            background: #f1f5f9;
+            background: var(--surface-soft);
+            color: var(--muted);
             font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            box-shadow: 0 1px 0 var(--stroke);
         }
-        tr:nth-child(even) td {
-            background: #fbfcfe;
+
+        tr {
+            border-bottom: 1px solid var(--stroke);
+            transition: background 0.15s ease;
         }
+
+        tr:last-child {
+            border-bottom: none;
+        }
+
+        tr:hover {
+            background: var(--surface-soft);
+        }
+
+        td {
+            font-variant-numeric: tabular-nums;
+            color: var(--ink);
+        }
+
+        /* Diff Badges */
+        .diff {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            min-width: 48px;
+        }
+
+        .diff.positive {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .diff.negative {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .diff.zero {
+            background: #f1f5f9;
+            color: #475569;
+        }
+
         .empty {
-            padding: 20px;
+            padding: 48px 24px;
             text-align: center;
             color: var(--muted);
             background: var(--surface);
             border-radius: var(--radius);
-            box-shadow: var(--shadow);
+            border: 1px dashed var(--muted-light);
+            font-size: 1.05rem;
         }
-        @media (max-width: 720px) {
-            h1 {
-                font-size: 1.9rem;
+
+        @media (max-width: 768px) {
+            body {
+                padding: 24px 16px 40px;
+            }
+            .filter-grid {
+                grid-template-columns: 1fr;
+            }
+            button {
+                width: 100%;
+            }
+            .hero-stats {
+                flex-direction: column;
+            }
+            .toolbar {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .toolbar-group {
+                width: 100%;
+            }
+            .toolbar-group select, .ghost-button {
+                flex: 1;
             }
         }
     </style>
@@ -344,57 +536,59 @@ function formatValue($value): string
 <body>
     <div class="page">
         <div class="topbar">
-            <a class="back" href="bestandsabweichungen.php">Zurueck</a>
+            <a class="back" href="bestandsabweichungen.php">&larr; Start</a>
+        </div>
+
+        <div class="header-text">
+            <h1>ASIN Historie</h1>
+            <p class="subtitle">Zeitliche Entwicklung der Bestandsabweichungen analysieren.</p>
         </div>
 
         <div class="panel">
-            <h1>ASIN Historie</h1>
-            <p class="subtitle">Zeitliche Entwicklung der Bestandsabweichungen in allen Logs.</p>
-            <form method="get" class="search-row">
-                <label for="asin">ASIN</label>
-                <input type="text" id="asin" name="asin" value="<?= h($asinRaw) ?>" placeholder="B000000000">
-                <label for="country">Land</label>
-                <select id="country" name="country">
-                    <?php foreach ($marketplaces as $code => $details): ?>
-                        <option value="<?= h($code) ?>" <?= $code === $selectedCountry ? 'selected' : '' ?>>
-                            <?= h($details['name']) ?> (<?= h($code) ?>)
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-                <button type="submit">Historie laden</button>
+            <form method="get" class="filter-grid">
+                <div class="field">
+                    <label for="asin">ASIN</label>
+                    <input type="text" id="asin" name="asin" value="<?= h($asinRaw) ?>" placeholder="B000000000">
+                </div>
+                <div class="field">
+                    <label for="country">Land</label>
+                    <select id="country" name="country">
+                        <?php foreach ($marketplaces as $code => $details): ?>
+                            <option value="<?= h($code) ?>" <?= $code === $selectedCountry ? 'selected' : '' ?>>
+                                <?= h($details['name']) ?> (<?= h($code) ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="field">
+                    <button type="submit">Historie laden</button>
+                </div>
             </form>
+
             <?php if ($warning): ?>
-                <div class="warning"><?= h($warning) ?></div>
+                <div class="alert warning"><?= h($warning) ?></div>
             <?php endif; ?>
             <?php if ($error): ?>
-                <div class="error"><?= h($error) ?></div>
+                <div class="alert error"><?= h($error) ?></div>
             <?php endif; ?>
+
             <?php if ($asin !== '' && !$error): ?>
-                <div class="stats">
-                    <div class="stat">Eintraege: <?= count($entries) ?></div>
+                <div class="hero-stats">
+                    <div class="stat-card">
+                        <div class="stat-label">Gesamte Eintraege</div>
+                        <div class="stat-value"><?= count($entries) ?></div>
+                    </div>
                     <?php if (!empty($entries)): ?>
-                        <div class="stat">Von: <?= h($entries[0]['timestamp']) ?></div>
-                        <div class="stat">Bis: <?= h($entries[count($entries) - 1]['timestamp']) ?></div>
+                        <div class="stat-card">
+                            <div class="stat-label">Erster Eintrag</div>
+                            <div class="stat-value"><?= h($entries[0]['timestamp']) ?></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Letzter Eintrag</div>
+                            <div class="stat-value"><?= h($entries[count($entries) - 1]['timestamp']) ?></div>
+                        </div>
                     <?php endif; ?>
                 </div>
-                <div class="actions">
-                    <a href="results.php?asin=<?= urlencode($asin) ?>&country=<?= urlencode($selectedCountry) ?>">
-                        <button type="button">Zur Ergebnis-Seite</button>
-                    </a>
-                </div>
-                <?php if (!empty($entries)): ?>
-                    <div class="chart-controls">
-                        <label for="timespan">Zeitraum</label>
-                        <select id="timespan">
-                            <option value="1">Letzte 24h</option>
-                            <option value="7" selected>Letzte 7 Tage</option>
-                            <option value="30">Letzte 30 Tage</option>
-                            <option value="90">Letzte 90 Tage</option>
-                            <option value="365">Letztes Jahr</option>
-                            <option value="all">Gesamter Zeitraum</option>
-                        </select>
-                    </div>
-                <?php endif; ?>
             <?php endif; ?>
         </div>
 
@@ -402,9 +596,32 @@ function formatValue($value): string
             <?php if (empty($entries)): ?>
                 <div class="empty">Keine Eintraege fuer diese ASIN gefunden.</div>
             <?php else: ?>
+                
+                <div class="toolbar">
+                    <div class="toolbar-group">
+                        <a class="ghost-button" href="results.php?asin=<?= urlencode($asin) ?>&country=<?= urlencode($selectedCountry) ?>">
+                            Zur Ergebnis-Seite
+                        </a>
+                    </div>
+                    <div class="toolbar-group">
+                        <div class="field" style="flex-direction: row; align-items: center;">
+                            <label for="timespan" style="margin:0; white-space:nowrap;">Zeitraum:</label>
+                            <select id="timespan" style="min-width: 180px;">
+                                <option value="1">Letzte 24h</option>
+                                <option value="7" selected>Letzte 7 Tage</option>
+                                <option value="30">Letzte 30 Tage</option>
+                                <option value="90">Letzte 90 Tage</option>
+                                <option value="365">Letztes Jahr</option>
+                                <option value="all">Gesamter Zeitraum</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="chart-wrap">
                     <canvas id="stockChart"></canvas>
                 </div>
+
                 <div class="table-wrap">
                     <table>
                         <thead>
@@ -419,13 +636,30 @@ function formatValue($value): string
                         </thead>
                         <tbody>
                             <?php foreach ($entries as $entry): ?>
+                                <?php
+                                    $diffClass = 'diff zero';
+                                    $diffPrefix = '';
+                                    if (is_numeric($entry['diff'])) {
+                                        $diffValue = (float)$entry['diff'];
+                                        if ($diffValue > 0) {
+                                            $diffClass = 'diff positive';
+                                            $diffPrefix = '+';
+                                        } elseif ($diffValue < 0) {
+                                            $diffClass = 'diff negative';
+                                        }
+                                    }
+                                ?>
                                 <tr>
                                     <td><?= h($entry['date']) ?></td>
                                     <td><?= h($entry['time']) ?></td>
-                                    <td><?= h((string)$entry['sku']) ?></td>
+                                    <td style="font-weight: 500;"><?= h((string)$entry['sku']) ?></td>
                                     <td><?= h(formatValue($entry['amazon_bisher'])) ?></td>
                                     <td><?= h(formatValue($entry['tricoma_neu'])) ?></td>
-                                    <td><?= h(formatValue($entry['diff'])) ?></td>
+                                    <td>
+                                        <span class="<?= h($diffClass) ?>">
+                                            <?= $diffPrefix ?><?= h(formatValue($entry['diff'])) ?>
+                                        </span>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -440,6 +674,10 @@ function formatValue($value): string
         const historyData = <?= json_encode($entries) ?>;
         let currentChart;
         let currentData = historyData;
+
+        // Custom styling for Chart.js to match the Space Grotesk theme
+        Chart.defaults.font.family = '"Space Grotesk", system-ui, sans-serif';
+        Chart.defaults.color = '#64748b';
 
         function formatNumber(value) {
             if (!Number.isFinite(value)) return '-';
@@ -490,21 +728,23 @@ function formatValue($value): string
                         {
                             label: 'Tricoma Bestand',
                             data: series.tricoma,
-                            borderColor: 'rgba(43, 180, 255, 1)',
-                            backgroundColor: 'rgba(43, 180, 255, 0.2)',
+                            borderColor: '#0ea5e9', // Tailwind sky-500
+                            backgroundColor: 'rgba(14, 165, 233, 0.1)',
                             tension: 0.4,
                             cubicInterpolationMode: 'monotone',
                             pointRadius: 2,
+                            pointHoverRadius: 5,
                             spanGaps: true
                         },
                         {
                             label: 'Amazon Bestand',
                             data: series.amazon,
-                            borderColor: 'rgba(255, 122, 24, 1)',
-                            backgroundColor: 'rgba(255, 122, 24, 0.2)',
+                            borderColor: '#ea580c', // Tailwind orange-600
+                            backgroundColor: 'rgba(234, 88, 12, 0.1)',
                             tension: 0.4,
                             cubicInterpolationMode: 'monotone',
                             pointRadius: 2,
+                            pointHoverRadius: 5,
                             spanGaps: true
                         }
                     ]
@@ -520,16 +760,22 @@ function formatValue($value): string
                         legend: {
                             labels: {
                                 usePointStyle: true,
-                                pointStyle: 'circle'
+                                pointStyle: 'circle',
+                                padding: 20
                             }
                         },
                         tooltip: {
                             mode: 'index',
                             intersect: false,
+                            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                            titleFont: { size: 13, weight: '600' },
+                            bodyFont: { size: 13 },
+                            padding: 12,
+                            cornerRadius: 8,
                             callbacks: {
                                 label: function (context) {
                                     const value = context.parsed.y;
-                                    return `${context.dataset.label}: ${formatNumber(value)}`;
+                                    return ` ${context.dataset.label}: ${formatNumber(value)}`;
                                 },
                                 footer: function (items) {
                                     if (!items.length) return '';
@@ -538,7 +784,8 @@ function formatValue($value): string
                                     const amazon = Number(currentData[index]?.amazon_bisher);
                                     if (!Number.isFinite(tricoma) || !Number.isFinite(amazon)) return '';
                                     const delta = tricoma - amazon;
-                                    return `Delta (T - A): ${formatNumber(delta)}`;
+                                    const sign = delta > 0 ? '+' : '';
+                                    return `\nDifferenz (T - A): ${sign}${formatNumber(delta)}`;
                                 }
                             }
                         }
@@ -550,15 +797,19 @@ function formatValue($value): string
                                 unit: unit,
                                 tooltipFormat: 'YYYY-MM-DD HH:mm:ss'
                             },
+                            grid: {
+                                color: '#f1f5f9'
+                            },
                             title: {
-                                display: true,
-                                text: 'Zeit'
+                                display: false
                             }
                         },
                         y: {
+                            grid: {
+                                color: '#f1f5f9'
+                            },
                             title: {
-                                display: true,
-                                text: 'Bestand'
+                                display: false
                             },
                             ticks: {
                                 precision: 0
