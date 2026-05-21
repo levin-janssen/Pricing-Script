@@ -18,16 +18,27 @@ class Logger {
         $dir = self::logDir();
         if (!is_dir($dir)) {
             mkdir($dir, 0777, true);
+            // umask-Probleme umgehen, falls der Server die Rechte beim mkdir einschränkt
+            chmod($dir, 0777); 
         }
 
         $date = date('Y-m-d');
         $time = date('H:i:s');
         $logFile = $dir . "/app_{$date}.log";
 
+        // Prüfen, ob die Datei bereits existiert, BEVOR wir schreiben
+        $fileExists = file_exists($logFile);
+
         $contextString = !empty($context) ? ' | Context: ' . json_encode($context, JSON_UNESCAPED_UNICODE) : '';
         $logEntry = "[{$date} {$time}] [{$level}] {$message}{$contextString}" . PHP_EOL;
 
+        // In die Datei schreiben (erstellt sie, falls sie nicht existiert)
         file_put_contents($logFile, $logEntry, FILE_APPEND);
+
+        // Wenn die Datei gerade neu erstellt wurde, Rechte für alle öffnen (0666)
+        if (!$fileExists) {
+            chmod($logFile, 0666);
+        }
     }
 
     public static function info($message, $context = []) {
