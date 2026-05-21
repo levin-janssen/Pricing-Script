@@ -340,7 +340,14 @@ if (empty($db_error) && !empty($selectedAsin)) {
                     href="https://www.amazon.de/dp/<?= htmlspecialchars($selectedAsin ?: 'N/A') ?>"><?= htmlspecialchars($selectedAsin ?: 'Keine ASIN') ?></a>
             </h1>
         </div>
-        <a href="addNew.php"><button id="addproductBtn">+ Produkt hinzufügen</button></a>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <?php if (!empty($selectedAsin)): ?>
+                <a href="bestandsabweichungen_historie.php?asin=<?= urlencode($selectedAsin) ?>">
+                    <button>Bestandshistorie</button>
+                </a>
+            <?php endif; ?>
+            <a href="addNew.php"><button id="addproductBtn">+ Produkt hinzufügen</button></a>
+        </div>
     </div>
 
     <?php if (!empty($db_error)): ?>

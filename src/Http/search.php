@@ -54,6 +54,9 @@ if (!isset($marketplaces[$current_marketplace_code])) {
         #marketplaceSelect {
             padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; background-color: #f9f9f9; cursor: pointer;
         }
+        .analysis-link {
+            margin-top: 12px;
+        }
     </style>
 </head>
 <body>
@@ -106,6 +109,12 @@ if (!isset($marketplaces[$current_marketplace_code])) {
                     </datalist>
             <button type="submit">Suchen</button>
         </form>
+
+        <div class="analysis-link">
+            <a href="bestandsabweichungen.php" style="text-decoration: none;">
+                <button type="button">Bestandsanalyse öffnen</button>
+            </a>
+        </div>
 
         <div class="hinweis">
             <strong>Hinweis:</strong> Es werden nur ASINs angezeigt/gesucht, die für das Land <strong><?= htmlspecialchars($current_marketplace_code) ?></strong> Preisgrenzen hinterlegt haben.
