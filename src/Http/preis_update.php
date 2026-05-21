@@ -128,7 +128,7 @@ if (empty($asins)) {
 
 $data = [];
 foreach (array_chunk($asins, $chunkSize) as $chunk) {
-    $prices = getOwnPricesByASIN($chunk, $marketplaceId);
+    $prices = getOwnPricesByASIN($chunk);
     if (isset($prices["payload"])) {
         $data = array_merge($data, $prices["payload"]);
         Logger::info("Fetched prices for chunk", ['chunk_size' => count($chunk)]);
