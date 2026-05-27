@@ -74,8 +74,14 @@ foreach ($marketplaces as $key => $value) {
     $asins = $statement->fetchAll(PDO::FETCH_ASSOC);
     Logger::info("Found ASINs to process", ['marketplace' => $key, 'count' => count($asins)]);
 
+    // --- NEU: Bulk-Preload für Tricoma Bestände ---
+    $preloadStartTime = microtime(true);
+    $asinArray = array_column($asins, 'ASIN'); // Extrahiert eine flache Liste aller ASINs
+    $tricomaBulkStock = preloadTricomaStocks($asinArray);
+    Logger::performance("DB: Tricoma Bulk Stock Preload", microtime(true) - $preloadStartTime, ['count' => count($asinArray)]);
+    // ----------------------------------------------
+
     foreach ($asins as $keyArray => $asinData) {
-        // START ASIN-TIMER
         $asinStartTime = microtime(true);
         $asin = $asinData["ASIN"];
         
@@ -94,15 +100,14 @@ foreach ($marketplaces as $key => $value) {
             Logger::info("FBA-Artikel erkannt: Bestand wird nicht übermittelt, nur Preisupdate.", ['asin' => $asin, 'sku' => $sku]);
             echo "FBA-Artikel: Überspringe Bestandsupdate für ASIN $asin.<br>\r\n";
         } else {
-           // --- FBM-ARTIKEL: BESTANDSAKTUALISIERUNG ---
+          // --- FBM-ARTIKEL: BESTANDSAKTUALISIERUNG ---
             
             // Alten Amazon-Bestand abfragen (nur für den Abgleich)
             $amazonQuantity = getQuantityBySku($sku, "A6F5BRV91OMPP", $marketplaceId);
             
-            // Echten Bestand aus Tricoma abfragen (verfügbar = Bestand - offene)
-            $tricomaQuantity = getRealTricomaStockByAsin($asin);
-            // Rohen Bestand aus Tricoma abfragen (ohne Abzug offener Lieferungen)
-            $tricomaPure = getTricomaStockByAsin($asin);
+            // Echten und Rohen Bestand aus dem vorab geladenen Cache (Array) abfragen
+            $tricomaQuantity = $tricomaBulkStock[$asin]['real'] ?? 0;
+            $tricomaPure = $tricomaBulkStock[$asin]['pure'] ?? 0;
 
             // Bestände abgleichen und ggf. warnen
             if ($amazonQuantity !== $tricomaQuantity) {
@@ -461,44 +466,65 @@ function logPlannedAction($dbConnection, $produktid, $neuerPreis, $niedrigsterPr
     }
 }
 
-function getTricomaStockByAsin($asin) {
+/**
+ * Lädt den Rohbestand und den echten Bestand (abzüglich offener Bestellungen)
+ * für ein Array von ASINs in genau ZWEI SQL-Queries.
+ */
+function preloadTricomaStocks(array $asinList): array {
     global $dbConnectionTric;
+    $result = [];
     
-    $stmt = $dbConnectionTric->prepare("
-        SELECT SUM(l.menge) AS total_quantity
+    if (empty($asinList)) {
+        return $result;
+    }
+    
+    // 1. Initialisiere alle ASINs standardmäßig mit 0
+    foreach ($asinList as $asin) {
+        $result[$asin] = ['pure' => 0, 'real' => 0];
+    }
+    
+    // Erstelle PDO Platzhalter (z.B. "?, ?, ?") für das IN() Statement
+    $placeholders = implode(',', array_fill(0, count($asinList), '?'));
+    
+    // 2. ROHBESTAND für alle ASINs auf einmal abfragen
+    $stmtPure = $dbConnectionTric->prepare("
+        SELECT pfw.wert1 AS asin, SUM(l.menge) AS total_quantity
         FROM produkte_felder_werte pfw
         INNER JOIN lager l ON pfw.produktid = l.vk_ID
-        WHERE pfw.feldid = 57 AND pfw.wert1 = :asin
+        WHERE pfw.feldid = 57 AND pfw.wert1 IN ($placeholders)
+        GROUP BY pfw.wert1
     ");
-    $stmt->execute([':asin' => $asin]);
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmtPure->execute($asinList);
+    while ($row = $stmtPure->fetch(PDO::FETCH_ASSOC)) {
+        $asin = $row['asin'];
+        $menge = (int)$row['total_quantity'];
+        $result[$asin]['pure'] = $menge;
+        $result[$asin]['real'] = $menge; // Wird im nächsten Schritt ggf. reduziert
+    }
     
-    return $result['total_quantity'] !== null ? (int)$result['total_quantity'] : 0;
-}
-
-function getRealTricomaStockByAsin(string $asin): int {
-    global $dbConnectionTric;
-
-    $tricomaPure = getTricomaStockByAsin($asin);
-
-    $queryOpen = "
-        SELECT SUM(lp.anzahl) AS open_quantity
+    // 3. OFFENE LIEFERUNGEN für alle ASINs auf einmal abfragen
+    $stmtOpen = $dbConnectionTric->prepare("
+        SELECT pfw.wert1 AS asin, SUM(lp.anzahl) AS open_quantity
         FROM lieferungen_positionen lp
         INNER JOIN produkte_felder_werte pfw ON pfw.produktid = lp.produktid
         INNER JOIN lieferungen lief ON lp.lieferungsid = lief.ID
         WHERE pfw.feldid = 57 
-          AND pfw.wert1 = :asin 
+          AND pfw.wert1 IN ($placeholders)
           AND lief.versandart = ''
-    ";
-
-    $stmt = $dbConnectionTric->prepare($queryOpen);
-    $stmt->execute([':asin' => $asin]);
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        GROUP BY pfw.wert1
+    ");
+    $stmtOpen->execute($asinList);
+    while ($row = $stmtOpen->fetch(PDO::FETCH_ASSOC)) {
+        $asin = $row['asin'];
+        $openOrders = (int)$row['open_quantity'];
+        
+        if (isset($result[$asin])) {
+            $realStock = $result[$asin]['pure'] - $openOrders;
+            $result[$asin]['real'] = $realStock > 0 ? $realStock : 0;
+        }
+    }
     
-    $openOrders = ($result !== false && $result['open_quantity'] !== null) ? (int)$result['open_quantity'] : 0;
-    $realStock = $tricomaPure - $openOrders;
-
-    return $realStock > 0 ? $realStock : 0;
+    return $result;
 }
 
 ?>
