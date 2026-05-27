@@ -1,4 +1,7 @@
 <?php
+// START GESAMT-TIMER
+$scriptStartTime = microtime(true);
+
 ini_set('default_charset',  'UTF-8');
 ini_set('error_log', APP_ROOT . '/error.log');
 
@@ -18,15 +21,18 @@ if (is_dir($logDir)) {
 
     if ($runCleanup) {
         $cutoff = time() - ($logRetentionDays * 86400);
+        // Clean both app_ and performance_ logs
         foreach (glob($logDir . '/app_*.log') as $file) {
-            $mtime = filemtime($file);
-            if ($mtime !== false && $mtime < $cutoff) {
-                @unlink($file);
-            }
+            if (filemtime($file) < $cutoff) @unlink($file);
+        }
+        foreach (glob($logDir . '/performance_*.log') as $file) {
+            if (filemtime($file) < $cutoff) @unlink($file);
         }
         @file_put_contents($cleanupMarker, (string)time());
     }
 }
+
+$dbStartTime = microtime(true);
 $dbConnection = new PDO('mysql:dbname=tric4calc;host=127.0.0.1;', 'root', '***REMOVED***');
 $dbConnection->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 $dbConnection->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_WARNING);
@@ -34,6 +40,7 @@ $dbConnection->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_WARNING);
 $dbConnectionTric = new PDO('mysql:dbname=***REMOVED***;host=***REMOVED***;', '***REMOVED***', '***REMOVED***');
 $dbConnectionTric->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 $dbConnectionTric->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
+Logger::performance("Database Connections Established", microtime(true) - $dbStartTime);
 
 #require APP_ROOT . '/vendor/autoload.php';
 require_once APP_ROOT . '/src/Support/Logger.php';
@@ -45,9 +52,10 @@ $AmazonBuilder = new AmazonFeedBuilder("A6F5BRV91OMPP", "2.0", "de_DE");
 $ManoManobuilderDE = new ManoManoFeedBuilder("cxkiqBhdGZUBLpWPOyyPDMPs67iZvMJp", 7877481);
 $ManoManobuilderFR = new ManoManoFeedBuilder("Hj8MyH9mXKy2Xv7ITTqeqrNkRbxro2Nm", 7877481);
 
-
-
 foreach ($marketplaces as $key => $value) {
+    // START MARKETPLACE-TIMER
+    $mpStartTime = microtime(true);
+    
     $marketplaceId = $value['marketplaceId'];
     $dbName = $value['dbName'];
     $currencyCode = $value['currencyCode'];
@@ -61,8 +69,10 @@ foreach ($marketplaces as $key => $value) {
     $asins = $statement->fetchAll(PDO::FETCH_ASSOC);
     Logger::info("Found ASINs to process", ['marketplace' => $key, 'count' => count($asins)]);
 
-    foreach ($asins as $key => $asin) {
-        $asin = $asin["ASIN"];
+    foreach ($asins as $keyArray => $asinData) {
+        // START ASIN-TIMER
+        $asinStartTime = microtime(true);
+        $asin = $asinData["ASIN"];
         
         $statement = $dbConnection->prepare("SELECT sku FROM tric4calc.Artikel WHERE ASIN = '$asin'");
         $statement->execute();
@@ -116,6 +126,7 @@ foreach ($marketplaces as $key => $value) {
         if($preis == null){
             echo "Kein neuer Preis für ASIN $asin gesetzt <br>\r\n";
             Logger::warning("Kein neuer Preis gesetzt", ['asin' => $asin, 'sku' => $sku]);
+            Logger::performance("ASIN Processed (No Price Update)", microtime(true) - $asinStartTime, ['asin' => $asin, 'sku' => $sku]);
             continue; // Bricht den restlichen Durchlauf ab, da kein Preis da ist
         } 
         
@@ -133,9 +144,17 @@ foreach ($marketplaces as $key => $value) {
             echo "Fehler beim Setzen des Preises für SKU $sku.<br>\r\n";
             Logger::error("Fehler beim Setzen des Preises", ['sku' => $sku, 'preis' => $preis, 'marketplaceId' => $marketplaceId]);
         }
+        
+        // END ASIN-TIMER
+        Logger::performance("ASIN Processed (Complete)", microtime(true) - $asinStartTime, ['asin' => $asin, 'sku' => $sku]);
     }
 
+    // END MARKETPLACE-TIMER
+    Logger::performance("Marketplace Processed ($key)", microtime(true) - $mpStartTime, ['marketplace' => $key]);
 }
+
+// START FEED-TIMER
+$feedStartTime = microtime(true);
 
 $feedContent = $AmazonBuilder->build();
 Logger::info("Amazon Feed built", ['length' => strlen($feedContent)]);
@@ -164,7 +183,13 @@ Logger::info("ManoMano FR Feed sent", ['response' => $response]);
 
 Logger::info("Done processing Marketplace", ['marketplace' => $key, 'currency' => $currencyCode]);
 
+// END FEED-TIMER
+Logger::performance("Feed Generation & Submission", microtime(true) - $feedStartTime);
 
+// END GESAMT-TIMER
+Logger::performance("Total Script Execution Time", microtime(true) - $scriptStartTime);
+
+// --- FUNCTIONS REMAIN THE SAME BELOW THIS LINE ---
 function processAsin($asin) {
     echo "<br>\r\n<br>\r\n---  ASIN: $asin ---<br>\r\n";
 
@@ -173,7 +198,6 @@ function processAsin($asin) {
     global $dbName;
     global $currencyCode;
     global $countrycode;
-
 
     $abstand_unten = 0.05; 
     $step_size = 0.05;
@@ -370,9 +394,6 @@ function logCurrentState($dbConnection, $produktid, $eigenerPreis, $niedrigsterP
     }
 }
 
-/**
- * Helper function to log the planned update action.
- */
 function logPlannedAction($dbConnection, $produktid, $neuerPreis, $niedrigsterPreisContext, $buyboxPreisContext, $action, $counter, $isWinner) {
     global $dbName;
     try {
@@ -423,10 +444,8 @@ function getTricomaStockByAsin($asin) {
 function getRealTricomaStockByAsin(string $asin): int {
     global $dbConnectionTric;
 
-    // 1. Rohbestand abfragen (Wir wissen aus deinen Logs, dass das perfekt funktioniert -> z.B. 94)
     $tricomaPure = getTricomaStockByAsin($asin);
 
-    // 2. Nur die offenen Positionen abfragen
     $queryOpen = "
         SELECT SUM(lp.anzahl) AS open_quantity
         FROM lieferungen_positionen lp
@@ -441,13 +460,9 @@ function getRealTricomaStockByAsin(string $asin): int {
     $stmt->execute([':asin' => $asin]);
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    // Fallback auf 0, falls keine offenen Lieferungen gefunden wurden
     $openOrders = ($result !== false && $result['open_quantity'] !== null) ? (int)$result['open_quantity'] : 0;
-
-    // 3. Echter Bestand = Rohbestand - Offene Lieferungen
     $realStock = $tricomaPure - $openOrders;
 
-    // 4. Verhindere negative Bestände
     return $realStock > 0 ? $realStock : 0;
 }
 

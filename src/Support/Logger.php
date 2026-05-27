@@ -10,11 +10,12 @@ class Logger {
     /**
      * Schreibt eine Log-Nachricht in die aktuelle Log-Datei.
      *
-     * @param string $level Loglevel (INFO, WARNING, ERROR, DEBUG)
+     * @param string $level Loglevel (INFO, WARNING, ERROR, DEBUG, PERF)
      * @param string $message Die Log-Nachricht.
      * @param array $context Zusätzliche Kontextdaten als Array (wird als JSON gespeichert).
+     * @param string $filePrefix Der Prefix der Log-Datei (z.B. 'app' oder 'performance')
      */
-    public static function log($level, $message, $context = []) {
+    public static function log($level, $message, $context = [], $filePrefix = 'app') {
         $dir = self::logDir();
         if (!is_dir($dir)) {
             mkdir($dir, 0777, true);
@@ -24,7 +25,7 @@ class Logger {
 
         $date = date('Y-m-d');
         $time = date('H:i:s');
-        $logFile = $dir . "/app_{$date}.log";
+        $logFile = $dir . "/{$filePrefix}_{$date}.log";
 
         // Prüfen, ob die Datei bereits existiert, BEVOR wir schreiben
         $fileExists = file_exists($logFile);
@@ -42,18 +43,30 @@ class Logger {
     }
 
     public static function info($message, $context = []) {
-        self::log('INFO', $message, $context);
+        self::log('INFO', $message, $context, 'app');
     }
 
     public static function warning($message, $context = []) {
-        self::log('WARNING', $message, $context);
+        self::log('WARNING', $message, $context, 'app');
     }
 
     public static function error($message, $context = []) {
-        self::log('ERROR', $message, $context);
+        self::log('ERROR', $message, $context, 'app');
     }
 
     public static function debug($message, $context = []) {
-        self::log('DEBUG', $message, $context);
+        self::log('DEBUG', $message, $context, 'app');
+    }
+
+    /**
+     * Loggt Performance-Daten in eine separate Datei.
+     *
+     * @param string $message Beschreibung des gemessenen Blocks.
+     * @param float $durationSec Die gemessene Zeit in Sekunden.
+     * @param array $context Weitere Infos (z.B. ASIN, Marketplace).
+     */
+    public static function performance($message, $durationSec, $context = []) {
+        $context['duration_seconds'] = round($durationSec, 4);
+        self::log('PERF', $message, $context, 'performance');
     }
 }
