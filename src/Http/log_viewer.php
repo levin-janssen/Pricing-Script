@@ -120,8 +120,8 @@ foreach ($rawEntries as $entry) {
     }
 }
 
-// Filter fuer die Quick-Access Runs (Letzte 2 Stunden, max 15)
-$twoHoursAgo = date('Y-m-d H:i:s', time() - 7200);
+// Filter fuer die Quick-Access Runs (Letzte 24 Stunden, max 21)
+$twoHoursAgo = date('Y-m-d H:i:s', time() - 86400);
 $isToday = ($selectedDate === date('Y-m-d'));
 $displayRuns = [];
 
@@ -150,7 +150,7 @@ foreach ($recentRuns as $rId => $data) {
     }
 }
 usort($displayRuns, static fn($a, $b) => strcmp($b['first_seen'], $a['first_seen']));
-$displayRuns = array_slice($displayRuns, 0, 15);
+$displayRuns = array_slice($displayRuns, 0, 21);
 
 // Graph-Daten fuer alle Runs des gewaehlten Tages (nur Runs mit Gesamtzeit)
 $graphData = [];
@@ -879,7 +879,7 @@ function h(string $value): string
                 
                 <div class="quick-runs">
                     <div class="quick-runs-label">
-                        <?= $isToday ? 'Runs der letzten 2h:' : 'Letzte Runs dieses Tages:' ?>
+                        <?= $isToday ? 'Letzten 21 Runs heute:' : 'Letzte Runs dieses Tages:' ?>
                     </div>
                     <div class="quick-runs-list">
                         <?php foreach ($displayRuns as $run): ?>

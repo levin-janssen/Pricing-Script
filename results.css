@@ -27,6 +27,33 @@ h3 {
     gap: 15px;
 }
 
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.header-actions form,
+.header-actions .delete-form {
+    display: inline-flex;
+    align-items: center;
+    background: transparent;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    margin: 0;
+}
+
+.header-actions .delete-button {
+    background-color: #c0392b;
+    color: #fff;
+}
+
+.header-actions .delete-button:hover {
+    background-color: #992d22;
+}
+
 .product-info {
     /* font-family: Arial, sans-serif; */ /* Usually inherited from body */
     margin-bottom: 20px; /* Add space below product info */

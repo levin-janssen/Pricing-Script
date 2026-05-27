@@ -41,6 +41,8 @@ $priceHistory = [];
 $selectedAsin = '';
 $update_message = '';
 $update_message_type = '';
+$delete_message = '';
+$delete_message_type = '';
 
 // Default form values
 $form_min_preis = '';
@@ -49,9 +51,72 @@ $form_step_small = '0.01';
 $form_step_big = '0.10';
 $artikel_id_for_buybox = null;
 
+$is_delete_request = $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_item']);
+$is_update_request = $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_settings']);
+
+// --- Handle Delete Request (POST Request) ---
+if ($is_delete_request && empty($db_error)) {
+    $posted_asin = filter_input(INPUT_POST, 'asin', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+    $selectedAsin = $posted_asin ?: filter_input(INPUT_GET, 'asin', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+
+    if (empty($selectedAsin) || !preg_match('/^[A-Z0-9]{10}$/', $selectedAsin)) {
+        $delete_message = 'Fehler: Ungueltige ASIN fuer die Loeschung.';
+        $delete_message_type = 'error';
+    } else {
+        try {
+            $dbConnection->beginTransaction();
+
+            $stmtArtikelId = $dbConnection->prepare("SELECT ID FROM Artikel WHERE asin = :asin LIMIT 1");
+            $stmtArtikelId->bindParam(':asin', $selectedAsin);
+            $stmtArtikelId->execute();
+            $artikel_id_for_buybox = $stmtArtikelId->fetchColumn();
+
+            if (!$artikel_id_for_buybox) {
+                throw new Exception('Artikel wurde nicht gefunden.');
+            }
+
+            $stmtDeletePreisgrenzen = $dbConnection->prepare(
+                "DELETE FROM Preisgrenzen WHERE ASIN = :asin AND Land = :land"
+            );
+            $stmtDeletePreisgrenzen->bindParam(':asin', $selectedAsin);
+            $stmtDeletePreisgrenzen->bindParam(':land', $current_marketplace_code);
+            $stmtDeletePreisgrenzen->execute();
+            $deleted_preisgrenzen = $stmtDeletePreisgrenzen->rowCount();
+
+            if (empty($country_specific_buybox_table)) {
+                throw new Exception('Buybox Tabellenname fuer das Land ist nicht konfiguriert.');
+            }
+
+            $stmtDeleteHistory = $dbConnection->prepare(
+                "DELETE FROM $country_specific_buybox_table WHERE produktid = :produktid"
+            );
+            $stmtDeleteHistory->bindParam(':produktid', $artikel_id_for_buybox, PDO::PARAM_INT);
+            $stmtDeleteHistory->execute();
+            $deleted_history = $stmtDeleteHistory->rowCount();
+
+            $dbConnection->commit();
+
+            $delete_message = 'Produkt ' . htmlspecialchars($selectedAsin) . ' fuer Land ' . htmlspecialchars($current_marketplace_code)
+                . ' geloescht. Preisgrenzen entfernt: ' . $deleted_preisgrenzen
+                . '. Historie geloescht: ' . $deleted_history . '.';
+            $delete_message_type = 'success';
+        } catch (\PDOException $e) {
+            if ($dbConnection->inTransaction()) $dbConnection->rollBack();
+            error_log("Loesch-Fehler fuer ASIN $selectedAsin / Land $current_marketplace_code: " . $e->getMessage());
+            $delete_message = 'Datenbankfehler beim Loeschen des Produkts.';
+            $delete_message_type = 'error';
+        } catch (\Exception $e) {
+            if ($dbConnection->inTransaction()) $dbConnection->rollBack();
+            error_log("Loesch-Fehler fuer ASIN $selectedAsin / Land $current_marketplace_code: " . $e->getMessage());
+            $delete_message = 'Fehler beim Loeschen des Produkts.';
+            $delete_message_type = 'error';
+        }
+    }
+}
+
 
 // --- Handle Settings Update (POST Request) ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_settings']) && empty($db_error)) {
+if ($is_update_request && empty($db_error)) {
     $posted_asin = filter_input(INPUT_POST, 'asin', FILTER_SANITIZE_FULL_SPECIAL_CHARS); // ASIN is the key for Preisgrenzen
     // produktid from Artikel is not directly used to update Preisgrenzen but good to have for context.
     // $posted_produktid_artikel = filter_input(INPUT_POST, 'produktid_artikel', FILTER_VALIDATE_INT);
@@ -158,7 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_settings']) &&
         $form_step_small = htmlspecialchars($stepsize_small_str);
         $form_step_big = htmlspecialchars($stepsize_big_str);
     }
-} else {
+} elseif (!$is_delete_request) {
     if (isset($_GET['asin']) && !empty($_GET['asin'])) {
         $selectedAsin = filter_input(INPUT_GET, 'asin', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
         if (!preg_match('/^[A-Z0-9]{10}$/', $selectedAsin) && empty($db_error)) {
@@ -338,11 +403,19 @@ if (empty($db_error) && !empty($selectedAsin)) {
                     href="https://www.amazon.de/dp/<?= htmlspecialchars($selectedAsin ?: 'N/A') ?>"><?= htmlspecialchars($selectedAsin ?: 'Keine ASIN') ?></a>
             </h1>
         </div>
-        <div style="display: flex; gap: 8px; align-items: center;">
+        <div class="header-actions">
             <?php if (!empty($selectedAsin)): ?>
                 <a href="bestandsabweichungen_historie.php?asin=<?= urlencode($selectedAsin) ?>">
                     <button>Bestandshistorie</button>
                 </a>
+            <?php endif; ?>
+            <?php if (!empty($selectedAsin) && empty($db_error)): ?>
+                <form class="delete-form" action="<?= htmlspecialchars($_SERVER['PHP_SELF']) ?>" method="POST" onsubmit="return confirmDeleteItem();">
+                    <input type="hidden" name="country" value="<?= htmlspecialchars($current_marketplace_code) ?>">
+                    <input type="hidden" name="asin" value="<?= htmlspecialchars($selectedAsin) ?>">
+                    <input type="hidden" name="delete_item" value="1">
+                    <button type="submit" class="delete-button">Produkt loeschen</button>
+                </form>
             <?php endif; ?>
             <a href="addNew.php"><button id="addproductBtn">+ Produkt hinzufügen</button></a>
         </div>
@@ -386,6 +459,14 @@ if (empty($db_error) && !empty($selectedAsin)) {
             </div>
 
         </div>
+
+        <?php if ($delete_message): ?>
+            <div class="update-message-area" style="margin-bottom: 15px; text-align:center;">
+                <div class="message <?= htmlspecialchars($delete_message_type) ?>" style="display: inline-block;">
+                    <?= htmlspecialchars($delete_message) ?>
+                </div>
+            </div>
+        <?php endif; ?>
 
         <?php if ($update_message): // Display update messages prominently before the chart/settings ?>
             <div class="update-message-area" style="margin-bottom: 15px; text-align:center;">
@@ -761,6 +842,15 @@ if (empty($db_error) && !empty($selectedAsin)) {
         <p class="message error">Keine Produktdetails für die ASIN "<?= htmlspecialchars($selectedAsin) ?>" in Land
             <?= htmlspecialchars($current_marketplace_code) ?> gefunden oder konfiguriert.</p>
     <?php endif; ?>
+
+    <script>
+        function confirmDeleteItem() {
+            if (!confirm('Dieses Produkt wird aus der Preissteuerung entfernt und die Historie wird geloescht. Fortfahren?')) {
+                return false;
+            }
+            return confirm('Wirklich loeschen? Diese Aktion kann nicht rueckgaengig gemacht werden.');
+        }
+    </script>
 
 </body>
 
