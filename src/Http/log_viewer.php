@@ -90,6 +90,7 @@ foreach ($rawEntries as $entry) {
     // 1. Run ID Statistik fuer die Top-Leiste sammeln
     if ($runId !== '') {
         $recentRuns[$runId] = [
+            'first_seen' => $recentRuns[$runId]['first_seen'] ?? $entry['timestamp'],
             'last_seen' => $entry['timestamp'],
             'has_error' => (isset($recentRuns[$runId]['has_error']) ? $recentRuns[$runId]['has_error'] : false) || ($entry['level'] === 'ERROR'),
             'runId' => $runId
@@ -133,7 +134,7 @@ foreach ($recentRuns as $rId => $data) {
         $displayRuns[] = $data;
     }
 }
-usort($displayRuns, static fn($a, $b) => strcmp($b['last_seen'], $a['last_seen']));
+usort($displayRuns, static fn($a, $b) => strcmp($b['first_seen'], $a['first_seen']));
 $displayRuns = array_slice($displayRuns, 0, 15);
 
 // Graph-Daten fuer die letzten Runs (nur Runs mit Gesamtzeit)
@@ -731,16 +732,20 @@ function h(string $value): string
 
         .chart-wrap {
             width: 100%;
+            position: relative;
             padding: 12px 12px 4px;
             border: 1px solid var(--stroke);
             border-radius: var(--radius);
-            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+            background: linear-gradient(135deg, #fff7ed 0%, #f8fafc 45%, #eef2ff 100%);
+            overflow: hidden;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 16px 30px rgba(15, 23, 42, 0.06);
         }
 
         .chart-canvas {
             width: 100%;
             height: 260px;
             display: block;
+            cursor: crosshair;
         }
 
         .chart-legend {
@@ -776,6 +781,52 @@ function h(string $value): string
             color: var(--muted);
             background: var(--surface);
         }
+
+        .chart-tooltip {
+            position: absolute;
+            top: 0;
+            left: 0;
+            min-width: 180px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.92);
+            color: #f8fafc;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.25);
+            font-size: 0.8rem;
+            line-height: 1.4;
+            opacity: 0;
+            transform: translateY(6px);
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .chart-tooltip.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .chart-tooltip strong {
+            display: block;
+            font-size: 0.85rem;
+            margin-bottom: 6px;
+        }
+
+        .chart-tooltip .tooltip-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            color: #e2e8f0;
+        }
+
+        .chart-tooltip .tooltip-row span:last-child {
+            color: #f8fafc;
+            font-weight: 600;
+        }
+
+        .chart-tooltip .status.ok { color: #fdba74; }
+        .chart-tooltip .status.error { color: #fecaca; }
 
         @media (max-width: 768px) {
             body { padding: 24px 16px 40px; }
@@ -894,6 +945,7 @@ function h(string $value): string
                 <?php else: ?>
                     <div class="chart-wrap">
                         <canvas id="run-duration-chart" class="chart-canvas" aria-label="Run Laufzeiten Diagramm"></canvas>
+                        <div id="run-duration-tooltip" class="chart-tooltip" role="status" aria-live="polite"></div>
                     </div>
                     <div class="chart-legend">
                         <span class="legend-item"><span class="legend-dot ok"></span>Run ohne Fehler</span>
@@ -979,9 +1031,51 @@ function h(string $value): string
             const accent = rootStyles.getPropertyValue('--accent').trim() || '#ea580c';
             const muted = rootStyles.getPropertyValue('--muted').trim() || '#64748b';
             const stroke = rootStyles.getPropertyValue('--stroke').trim() || '#e2e8f0';
+            const chartWrap = canvas.closest('.chart-wrap');
+            const tooltip = chartWrap ? chartWrap.querySelector('#run-duration-tooltip') : null;
+            const grid = 'rgba(148, 163, 184, 0.35)';
 
-            const formatSeconds = (value) => {
-                return value.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' s';
+            let barRects = [];
+            let hoverIndex = -1;
+
+            const escapeHtml = (value) => String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+
+            const pickUnit = (seconds) => {
+                if (seconds >= 86400) return { unit: 'd', factor: 86400 };
+                if (seconds >= 3600) return { unit: 'h', factor: 3600 };
+                if (seconds >= 60) return { unit: 'min', factor: 60 };
+                return { unit: 's', factor: 1 };
+            };
+
+            const formatScaled = (seconds, unit, forcedDecimals) => {
+                const value = seconds / unit.factor;
+                const decimals = forcedDecimals !== undefined
+                    ? forcedDecimals
+                    : (value >= 100 ? 0 : value >= 10 ? 1 : 2);
+                return value.toLocaleString('de-DE', {
+                    minimumFractionDigits: decimals,
+                    maximumFractionDigits: decimals
+                }) + ' ' + unit.unit;
+            };
+
+            const formatAuto = (seconds) => formatScaled(seconds, pickUnit(seconds));
+
+            const drawRoundedRect = (x, y, width, height, radius) => {
+                const r = Math.min(radius, width / 2, height / 2);
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.lineTo(x + width - r, y);
+                ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+                ctx.lineTo(x + width, y + height);
+                ctx.lineTo(x, y + height);
+                ctx.lineTo(x, y + r);
+                ctx.quadraticCurveTo(x, y, x + r, y);
+                ctx.closePath();
             };
 
             const drawChart = () => {
@@ -996,7 +1090,7 @@ function h(string $value): string
 
                 ctx.clearRect(0, 0, width, height);
 
-                const padding = { top: 16, right: 20, bottom: 44, left: 56 };
+                const padding = { top: 26, right: 20, bottom: 44, left: 62 };
                 const plotWidth = width - padding.left - padding.right;
                 const plotHeight = height - padding.top - padding.bottom;
 
@@ -1011,7 +1105,27 @@ function h(string $value): string
                 ctx.lineWidth = 1;
                 ctx.font = '12px "Space Grotesk", system-ui, -apple-system, sans-serif';
 
+                const axisUnit = pickUnit(maxDuration);
+                const axisLabel = 'Laufzeit (' + axisUnit.unit + ')';
+
+                const background = ctx.createLinearGradient(0, padding.top, 0, height - padding.bottom);
+                background.addColorStop(0, 'rgba(248, 250, 252, 0.85)');
+                background.addColorStop(1, 'rgba(226, 232, 240, 0.25)');
+                ctx.fillStyle = background;
+                ctx.fillRect(padding.left, padding.top, plotWidth, plotHeight);
+
+                ctx.fillStyle = muted;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'alphabetic';
+                ctx.fillText(axisLabel, padding.left, padding.top - 8);
+
                 const gridLines = 4;
+                ctx.save();
+                ctx.strokeStyle = grid;
+                ctx.setLineDash([4, 4]);
+                ctx.lineWidth = 1;
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'middle';
                 for (let i = 0; i <= gridLines; i += 1) {
                     const y = padding.top + (plotHeight * i) / gridLines;
                     ctx.beginPath();
@@ -1020,29 +1134,134 @@ function h(string $value): string
                     ctx.stroke();
 
                     const labelValue = scaleMax - (scaleMax * i) / gridLines;
-                    ctx.fillText(formatSeconds(labelValue), 8, y + 4);
+                    ctx.fillText(formatScaled(labelValue, axisUnit), padding.left - 10, y);
                 }
+                ctx.restore();
 
-                const labelStep = data.length > 10 ? 2 : 1;
+                const labelStep = data.length > 12 ? Math.ceil(data.length / 12) : 1;
+                barRects = [];
 
                 data.forEach((item, index) => {
                     const x = padding.left + index * barSlot + (barSlot - barWidth) / 2;
                     const barHeight = (item.duration / scaleMax) * plotHeight;
                     const y = padding.top + plotHeight - barHeight;
 
-                    ctx.fillStyle = item.has_error ? '#b91c1c' : accent;
-                    ctx.fillRect(x, y, barWidth, barHeight);
+                    if (barHeight <= 0) {
+                        return;
+                    }
+
+                    const baseColor = item.has_error ? '#b91c1c' : accent;
+                    const radius = Math.min(10, barWidth / 2, barHeight / 2);
+
+                    ctx.save();
+                    if (index === hoverIndex) {
+                        ctx.shadowColor = 'rgba(15, 23, 42, 0.25)';
+                        ctx.shadowBlur = 16;
+                        ctx.shadowOffsetY = 6;
+                    }
+
+                    ctx.fillStyle = baseColor;
+                    drawRoundedRect(x, y, barWidth, barHeight, radius);
+                    ctx.fill();
+
+                    const gloss = ctx.createLinearGradient(0, y, 0, y + barHeight);
+                    gloss.addColorStop(0, 'rgba(255,255,255,0.45)');
+                    gloss.addColorStop(0.6, 'rgba(255,255,255,0.12)');
+                    gloss.addColorStop(1, 'rgba(255,255,255,0)');
+                    ctx.fillStyle = gloss;
+                    drawRoundedRect(x, y, barWidth, barHeight, radius);
+                    ctx.fill();
+                    ctx.restore();
+
+                    barRects.push({ x, y, width: barWidth, height: barHeight, item });
 
                     if (index % labelStep === 0) {
                         ctx.fillStyle = muted;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'alphabetic';
                         const label = item.runId.length > 6 ? item.runId.slice(0, 6) : item.runId;
-                        ctx.fillText(label, x, height - 18);
+                        ctx.fillText(label, x + barWidth / 2, height - 16);
                     }
                 });
+
+                ctx.strokeStyle = stroke;
+                ctx.lineWidth = 1;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(padding.left, padding.top + plotHeight);
+                ctx.lineTo(width - padding.right, padding.top + plotHeight);
+                ctx.stroke();
+            };
+
+            const updateTooltip = (bar, event) => {
+                if (!tooltip || !chartWrap) {
+                    return;
+                }
+                const statusLabel = bar.item.has_error ? 'Fehler' : 'OK';
+                const statusClass = bar.item.has_error ? 'error' : 'ok';
+                tooltip.innerHTML = `
+                    <strong>Run ${escapeHtml(bar.item.runId)}</strong>
+                    <div class="tooltip-row"><span>Laufzeit</span><span>${escapeHtml(formatAuto(bar.item.duration))}</span></div>
+                    <div class="tooltip-row"><span>Status</span><span class="status ${statusClass}">${statusLabel}</span></div>
+                    <div class="tooltip-row"><span>Letzter Eintrag</span><span>${escapeHtml(bar.item.last_seen)}</span></div>
+                `;
+
+                tooltip.classList.add('is-visible');
+                const wrapRect = chartWrap.getBoundingClientRect();
+                const tooltipRect = tooltip.getBoundingClientRect();
+                const offsetX = event.clientX - wrapRect.left;
+                const offsetY = event.clientY - wrapRect.top;
+
+                let left = offsetX + 14;
+                let top = offsetY - tooltipRect.height - 14;
+                if (left + tooltipRect.width > wrapRect.width - 8) {
+                    left = wrapRect.width - tooltipRect.width - 8;
+                }
+                if (left < 8) {
+                    left = 8;
+                }
+                if (top < 8) {
+                    top = offsetY + 14;
+                }
+                tooltip.style.left = `${left}px`;
+                tooltip.style.top = `${top}px`;
+            };
+
+            const hideTooltip = () => {
+                if (tooltip) {
+                    tooltip.classList.remove('is-visible');
+                }
+                if (hoverIndex !== -1) {
+                    hoverIndex = -1;
+                    drawChart();
+                }
+            };
+
+            const handleMove = (event) => {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                const index = barRects.findIndex((bar) => x >= bar.x && x <= bar.x + bar.width && y >= bar.y && y <= bar.y + bar.height);
+
+                if (index !== hoverIndex) {
+                    hoverIndex = index;
+                    drawChart();
+                }
+
+                if (index === -1) {
+                    hideTooltip();
+                    return;
+                }
+
+                updateTooltip(barRects[index], event);
             };
 
             drawChart();
             window.addEventListener('resize', drawChart);
+            if (chartWrap) {
+                chartWrap.addEventListener('mousemove', handleMove);
+                chartWrap.addEventListener('mouseleave', hideTooltip);
+            }
         })();
     </script>
 </body>
