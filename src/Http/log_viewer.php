@@ -1,7 +1,6 @@
 <?php
 
 declare(strict_types=1);
-ini_set('default_charset',  'UTF-8');
 
 date_default_timezone_set('Europe/Berlin');
 
@@ -74,17 +73,27 @@ if ($error === '') {
 }
 
 // ------------------------------------------------------------------
-// LOG-MERGE LOGIC (Attach Performance to App Logs)
+// LOG-MERGE & STATS EXTRACTION
 // ------------------------------------------------------------------
 $mergedEntries = [];
-$lastAsinEntryIndex = []; // Lookup: [runId][asin] = Letzter Index im gemergten Array
-$runTotalTimes = [];      // Lookup: Speichert die Gesamtlaufzeit pro RunID
+$lastAsinEntryIndex = []; 
+$runTotalTimes = [];      
+$recentRuns = []; // Speichert die Daten fuer die Schnellzugriffs-Buttons
 
 foreach ($rawEntries as $entry) {
     $runId = $entry['runId'];
     $asin = $entry['asin'];
     $isPerf = ($entry['level'] === 'PERF');
     $duration = $entry['duration'];
+
+    // 1. Run ID Statistik fuer die Top-Leiste sammeln
+    if ($runId !== '') {
+        $recentRuns[$runId] = [
+            'last_seen' => $entry['timestamp'],
+            'has_error' => (isset($recentRuns[$runId]['has_error']) ? $recentRuns[$runId]['has_error'] : false) || ($entry['level'] === 'ERROR'),
+            'runId' => $runId
+        ];
+    }
 
     // Globale Skriptlaufzeit abgreifen
     if ($isPerf && $runId !== '' && stripos($entry['message'], 'Total Script Execution Time') !== false && $duration !== null) {
@@ -96,7 +105,7 @@ foreach ($rawEntries as $entry) {
         if (isset($lastAsinEntryIndex[$runId][$asin])) {
             $idx = $lastAsinEntryIndex[$runId][$asin];
             $mergedEntries[$idx]['display_duration'] = $duration;
-            continue; // Ueberspringt das Einfuegen als eigene Zeile
+            continue; 
         }
     }
 
@@ -104,11 +113,28 @@ foreach ($rawEntries as $entry) {
     $mergedEntries[] = $entry;
     $idx = count($mergedEntries) - 1;
 
-    // Index merken, falls es ein normales Log mit ASIN ist
     if (!$isPerf && $asin !== '' && $runId !== '') {
         $lastAsinEntryIndex[$runId][$asin] = $idx;
     }
 }
+
+// Filter fuer die Quick-Access Runs (Letzte 2 Stunden, max 15)
+$twoHoursAgo = date('Y-m-d H:i:s', time() - 7200);
+$isToday = ($selectedDate === date('Y-m-d'));
+$displayRuns = [];
+
+foreach ($recentRuns as $rId => $data) {
+    if ($isToday) {
+        if ($data['last_seen'] >= $twoHoursAgo) {
+            $displayRuns[] = $data;
+        }
+    } else {
+        $displayRuns[] = $data;
+    }
+}
+usort($displayRuns, static fn($a, $b) => strcmp($b['last_seen'], $a['last_seen']));
+$displayRuns = array_slice($displayRuns, 0, 15);
+
 
 // ------------------------------------------------------------------
 // FILTERING & FINAL SORT
@@ -128,18 +154,15 @@ usort($entries, static function (array $left, array $right): int {
     return strcmp($right['timestamp'], $left['timestamp']);
 });
 
-// Limitieren
 if (count($entries) > $entryLimit) {
     $entries = array_slice($entries, 0, $entryLimit);
 }
 
-// Aktive Filter Label
 $activeFilters = [];
 if ($filterAsin !== '') $activeFilters[] = 'ASIN: ' . $filterAsin;
 if ($filterSku !== '') $activeFilters[] = 'SKU: ' . $filterSku;
 if ($filterRunId !== '') $activeFilters[] = 'Run ID: ' . $filterRunId;
 
-// Gefilterte Laufzeit (falls vorhanden)
 $filteredRuntime = null;
 if ($filterRunId !== '' && isset($runTotalTimes[$filterRunId])) {
     $filteredRuntime = $runTotalTimes[$filterRunId];
@@ -151,7 +174,6 @@ if ($filterRunId !== '' && isset($runTotalTimes[$filterRunId])) {
 
 function parseLogLine(string $line): ?array
 {
-    // Regex matches optional RunID tag
     if (!preg_match('/^\[(.*?) (.*?)\](?: \[RunID: (.*?)\])? \[([A-Z]+)\] (.+)$/', $line, $matches)) {
         return null;
     }
@@ -202,7 +224,7 @@ function parseLogLine(string $line): ?array
         'asin' => $asin,
         'sku' => $sku,
         'duration' => $duration,
-        'display_duration' => $duration, // Wird beim Mergen ggf. ueberschrieben
+        'display_duration' => $duration,
         'raw_line' => $line
     ];
 }
@@ -310,6 +332,8 @@ function h(string $value): string
             margin-bottom: 32px;
         }
 
+        .hero-text { flex: 1; min-width: 300px; }
+
         .hero-text .eyebrow {
             text-transform: uppercase;
             letter-spacing: 0.1em;
@@ -332,7 +356,71 @@ function h(string $value): string
             max-width: 520px;
         }
 
-        .hero-stats { display: flex; gap: 16px; flex-wrap: wrap; }
+        /* --- NEU: Quick Runs Styles --- */
+        .quick-runs {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .quick-runs-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .quick-runs-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .quick-run-badge {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.85rem;
+            padding: 4px 10px;
+            background: var(--surface);
+            border: 1px solid var(--stroke);
+            border-radius: 6px;
+            color: var(--ink);
+            text-decoration: none;
+            transition: all 0.2s;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .quick-run-badge:hover {
+            border-color: var(--muted-light);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow);
+        }
+
+        .quick-run-badge.active {
+            background: var(--ink);
+            color: white;
+            border-color: var(--ink);
+        }
+
+        .quick-run-badge.error {
+            border-color: #fecaca;
+            background: #fef2f2;
+            color: #b91c1c;
+        }
+
+        .quick-run-badge.error:hover {
+            border-color: #f87171;
+        }
+
+        .quick-run-badge.error.active {
+            background: #b91c1c;
+            color: white;
+            border-color: #b91c1c;
+        }
+        /* ------------------------------- */
+
+        .hero-stats { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
 
         .stat-card {
             background: var(--surface);
@@ -349,13 +437,8 @@ function h(string $value): string
             box-shadow: 0 4px 12px rgba(0,0,0,0.05);
         }
 
-        .stat-card.highlight .stat-label {
-            color: #334155;
-        }
-
-        .stat-card.highlight .stat-value {
-            color: var(--accent);
-        }
+        .stat-card.highlight .stat-label { color: #334155; }
+        .stat-card.highlight .stat-value { color: var(--accent); }
 
         .stat-label {
             font-size: 0.75rem;
@@ -395,7 +478,6 @@ function h(string $value): string
         }
 
         .field { display: flex; flex-direction: column; gap: 8px; }
-
         .field label { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
 
         input[type="text"], input[type="date"] {
@@ -644,7 +726,31 @@ function h(string $value): string
                 <p class="eyebrow">Log Viewer</p>
                 <h1>System & Performance Logs</h1>
                 <p class="subtitle">Analysiere Skript-Ausfuerungen, setze Run IDs ein und ueberwache die Laufzeiten.</p>
+                
+                <div class="quick-runs">
+                    <div class="quick-runs-label">
+                        <?= $isToday ? 'Runs der letzten 2h:' : 'Letzte Runs dieses Tages:' ?>
+                    </div>
+                    <div class="quick-runs-list">
+                        <?php foreach ($displayRuns as $run): ?>
+                            <?php 
+                                $isError = $run['has_error'] ? 'error' : '';
+                                $isActive = ($filterRunId === $run['runId']) ? 'active' : '';
+                            ?>
+                            <a href="?date=<?= h($selectedDate) ?>&runid=<?= h($run['runId']) ?>" 
+                               class="quick-run-badge <?= $isError ?> <?= $isActive ?>"
+                               title="Letzter Eintrag: <?= h($run['last_seen']) ?>">
+                               <?= h($run['runId']) ?>
+                            </a>
+                        <?php endforeach; ?>
+                        
+                        <?php if (empty($displayRuns)): ?>
+                            <span class="muted" style="font-size: 0.85rem;">Keine Runs gefunden.</span>
+                        <?php endif; ?>
+                    </div>
+                </div>
             </div>
+            
             <div class="hero-stats">
                 <?php if ($filteredRuntime !== null): ?>
                     <div class="stat-card highlight">
@@ -703,9 +809,9 @@ function h(string $value): string
 
             <?php if (!empty($availableDates)): ?>
                 <div class="dates">
-                    <strong>Schnellauswahl:</strong>
+                    <strong>Tage mit Logs:</strong>
                     <?php foreach (array_slice($availableDates, 0, 10) as $dateOption): ?>
-                        <a href="<?= h(buildDateLink($dateOption, $filterAsin, $filterSku, $filterRunId)) ?>"><?= h($dateOption) ?></a>
+                        <a href="<?= h(buildDateLink($dateOption, '', '', '')) ?>"><?= h($dateOption) ?></a>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
