@@ -46,10 +46,6 @@ $dbConnection = new PDO('mysql:dbname=tric4calc;host=127.0.0.1;', 'root', '***RE
 $dbConnection->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 $dbConnection->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_WARNING);
 
-$dbConnectionTric = new PDO('mysql:dbname=***REMOVED***;host=***REMOVED***;', '***REMOVED***', '***REMOVED***');
-$dbConnectionTric->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
-$dbConnectionTric->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
-
 Logger::performance("Database Connections Established", microtime(true) - $dbStartTime);
 
 
@@ -471,12 +467,20 @@ function logPlannedAction($dbConnection, $produktid, $neuerPreis, $niedrigsterPr
  * für ein Array von ASINs in genau ZWEI SQL-Queries.
  */
 function preloadTricomaStocks(array $asinList): array {
-    global $dbConnectionTric;
+    // 1. Frische Verbindung aufbauen, um Timeouts zu verhindern!
+    $dbConnectionTric = new PDO('mysql:dbname=***REMOVED***;host=***REMOVED***;', '***REMOVED***', '***REMOVED***');
+    $dbConnectionTric->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+    // Auf Exception setzen, damit wir echte Fehler statt stille Warnungen bekommen
+    $dbConnectionTric->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); 
+    
     $result = [];
     
     if (empty($asinList)) {
         return $result;
     }
+    
+    // ... restlicher Code der Funktion bleibt exakt gleich (z.B. foreach, prepare, execute) ...
+    // Nur das 'global $dbConnectionTric;' am Anfang der Funktion kannst du jetzt entfernen.
     
     // 1. Initialisiere alle ASINs standardmäßig mit 0
     foreach ($asinList as $asin) {
