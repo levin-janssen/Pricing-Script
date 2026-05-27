@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+ini_set('default_charset',  'UTF-8');
 
 date_default_timezone_set('Europe/Berlin');
 
@@ -134,6 +135,25 @@ foreach ($recentRuns as $rId => $data) {
 }
 usort($displayRuns, static fn($a, $b) => strcmp($b['last_seen'], $a['last_seen']));
 $displayRuns = array_slice($displayRuns, 0, 15);
+
+// Graph-Daten fuer die letzten Runs (nur Runs mit Gesamtzeit)
+$graphData = [];
+foreach ($displayRuns as $run) {
+    $runId = $run['runId'];
+    if ($runId === '' || !isset($runTotalTimes[$runId])) {
+        continue;
+    }
+    $graphData[] = [
+        'runId' => $runId,
+        'duration' => (float)$runTotalTimes[$runId],
+        'has_error' => (bool)$run['has_error'],
+        'last_seen' => $run['last_seen']
+    ];
+}
+// Aelteste Runs links anzeigen
+if (!empty($graphData)) {
+    $graphData = array_values(array_reverse($graphData));
+}
 
 
 // ------------------------------------------------------------------
@@ -709,6 +729,54 @@ function h(string $value): string
             font-size: 1.05rem;
         }
 
+        .chart-wrap {
+            width: 100%;
+            padding: 12px 12px 4px;
+            border: 1px solid var(--stroke);
+            border-radius: var(--radius);
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+        }
+
+        .chart-canvas {
+            width: 100%;
+            height: 260px;
+            display: block;
+        }
+
+        .chart-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-top: 12px;
+            color: var(--muted);
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            display: inline-block;
+        }
+
+        .legend-dot.ok { background: var(--accent); }
+        .legend-dot.error { background: #b91c1c; }
+
+        .chart-empty {
+            padding: 24px;
+            border-radius: var(--radius);
+            border: 1px dashed var(--muted-light);
+            color: var(--muted);
+            background: var(--surface);
+        }
+
         @media (max-width: 768px) {
             body { padding: 24px 16px 40px; }
             .hero { flex-direction: column; align-items: flex-start; gap: 20px; }
@@ -817,6 +885,24 @@ function h(string $value): string
             <?php endif; ?>
         </div>
 
+        <?php if ($filterRunId === ''): ?>
+            <div class="panel">
+                <h2>Run-Laufzeiten (letzte Runs)</h2>
+                <p class="muted">Nur Runs mit gemessener Gesamtlaufzeit werden angezeigt.</p>
+                <?php if (empty($graphData)): ?>
+                    <div class="chart-empty">Keine Laufzeiten fuer die letzten Runs gefunden.</div>
+                <?php else: ?>
+                    <div class="chart-wrap">
+                        <canvas id="run-duration-chart" class="chart-canvas" aria-label="Run Laufzeiten Diagramm"></canvas>
+                    </div>
+                    <div class="chart-legend">
+                        <span class="legend-item"><span class="legend-dot ok"></span>Run ohne Fehler</span>
+                        <span class="legend-item"><span class="legend-dot error"></span>Run mit Fehler</span>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
         <?php if (!$error && empty($entries)): ?>
             <div class="empty">Keine Eintraege mit den aktuellen Filtern gefunden.</div>
         <?php elseif (!$error): ?>
@@ -879,5 +965,85 @@ function h(string $value): string
             </div>
         <?php endif; ?>
     </div>
+
+    <script>
+        (() => {
+            const data = <?= json_encode($graphData, JSON_UNESCAPED_UNICODE) ?>;
+            const canvas = document.getElementById('run-duration-chart');
+            if (!canvas || !Array.isArray(data) || data.length === 0) {
+                return;
+            }
+
+            const ctx = canvas.getContext('2d');
+            const rootStyles = getComputedStyle(document.documentElement);
+            const accent = rootStyles.getPropertyValue('--accent').trim() || '#ea580c';
+            const muted = rootStyles.getPropertyValue('--muted').trim() || '#64748b';
+            const stroke = rootStyles.getPropertyValue('--stroke').trim() || '#e2e8f0';
+
+            const formatSeconds = (value) => {
+                return value.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' s';
+            };
+
+            const drawChart = () => {
+                const width = canvas.clientWidth || 600;
+                const height = 260;
+                const dpr = window.devicePixelRatio || 1;
+
+                canvas.width = Math.floor(width * dpr);
+                canvas.height = Math.floor(height * dpr);
+                canvas.style.height = height + 'px';
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+                ctx.clearRect(0, 0, width, height);
+
+                const padding = { top: 16, right: 20, bottom: 44, left: 56 };
+                const plotWidth = width - padding.left - padding.right;
+                const plotHeight = height - padding.top - padding.bottom;
+
+                const maxDuration = Math.max(...data.map((item) => item.duration));
+                const scaleMax = maxDuration > 0 ? maxDuration * 1.1 : 1;
+                const barSlot = plotWidth / data.length;
+                const barGap = Math.min(10, barSlot * 0.25);
+                const barWidth = Math.max(8, barSlot - barGap);
+
+                ctx.strokeStyle = stroke;
+                ctx.fillStyle = muted;
+                ctx.lineWidth = 1;
+                ctx.font = '12px "Space Grotesk", system-ui, -apple-system, sans-serif';
+
+                const gridLines = 4;
+                for (let i = 0; i <= gridLines; i += 1) {
+                    const y = padding.top + (plotHeight * i) / gridLines;
+                    ctx.beginPath();
+                    ctx.moveTo(padding.left, y);
+                    ctx.lineTo(width - padding.right, y);
+                    ctx.stroke();
+
+                    const labelValue = scaleMax - (scaleMax * i) / gridLines;
+                    ctx.fillText(formatSeconds(labelValue), 8, y + 4);
+                }
+
+                const labelStep = data.length > 10 ? 2 : 1;
+
+                data.forEach((item, index) => {
+                    const x = padding.left + index * barSlot + (barSlot - barWidth) / 2;
+                    const barHeight = (item.duration / scaleMax) * plotHeight;
+                    const y = padding.top + plotHeight - barHeight;
+
+                    ctx.fillStyle = item.has_error ? '#b91c1c' : accent;
+                    ctx.fillRect(x, y, barWidth, barHeight);
+
+                    if (index % labelStep === 0) {
+                        ctx.fillStyle = muted;
+                        const label = item.runId.length > 6 ? item.runId.slice(0, 6) : item.runId;
+                        ctx.fillText(label, x, height - 18);
+                    }
+                });
+            };
+
+            drawChart();
+            window.addEventListener('resize', drawChart);
+        })();
+    </script>
 </body>
 </html>
