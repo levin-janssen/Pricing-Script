@@ -10,6 +10,11 @@ require_once __DIR__ . '/../Services/AmazonFeedBuilder.php';
 require_once __DIR__ . '/../Services/ManoManoFeedBuilder.php';
 require_once dirname(__DIR__, 2) . '/config/marketplaces.php';
 
+$currentRunId = substr(md5(microtime()), 0, 6);
+Logger::setRunId($currentRunId);
+
+Logger::info("--- STARTING NEW SCRIPT RUN ---");
+
 $logRetentionDays = 30;
 $logDir = dirname(__DIR__, 2) . '/logs';
 $cleanupMarker = $logDir . '/.cleanup.last';
