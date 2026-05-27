@@ -236,7 +236,12 @@ function processAsin($asin) {
     $counter = $previousState['counter'] ?? null;
     echo "Previous State - Own: $eigenerPreis_alt, Lowest: $niedrigsterPreis_alt, BB: $buyboxpreis_alt, Action: $action_alt, Counter: $counter<br>\r\n";
 
-    $data = callItemsAPI($asin,  $marketplaceId);
+    // Inside processAsin(), right before callItemsAPI:
+
+    $apiStartTime = microtime(true);
+    $data = callItemsAPI($asin, $marketplaceId);
+    Logger::performance("API: callItemsAPI", microtime(true) - $apiStartTime, ['asin' => $asin]);
+
     if (!$data) {
         error_log("Error: API call failed for ASIN $asin. Data is null.");
          echo "Error: Fehler beim Abrufen der API Data für ASIN $asin.<br>\r\n";
@@ -244,7 +249,12 @@ function processAsin($asin) {
     }
     $buyboxpreis_raw = getInfoByASIN($data, "buyboxpreis");
     $niedrigsterPreis_raw = getLowestPrice($data);
-    $eigenerPreis_raw = getOwnPriceBySku($sku,  $marketplaceId);
+
+    // And later, wrap the getOwnPriceBySku call:
+    $ownPriceStartTime = microtime(true);
+    $eigenerPreis_raw = getOwnPriceBySku($sku, $marketplaceId);
+    Logger::performance("API: getOwnPriceBySku", microtime(true) - $ownPriceStartTime, ['sku' => $sku]);
+
     $isWinner = IsBuyBoxWinner(getInfoByASIN($data, "offers"));
 
     $buyboxpreis = filter_var($buyboxpreis_raw, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
