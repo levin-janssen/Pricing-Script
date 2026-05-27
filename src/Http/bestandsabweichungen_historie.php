@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+// UTF-8 erzwingen
+ini_set('default_charset', 'UTF-8');
+header('Content-Type: text/html; charset=utf-8');
+
 date_default_timezone_set('Europe/Berlin');
 
 require_once APP_ROOT . '/config/marketplaces.php';
@@ -83,6 +87,7 @@ if ($asin !== '') {
 
                 $amazon = $context['amazon_bisher'] ?? null;
                 $tricoma = $context['tricoma_neu'] ?? null;
+                $tricoma_pure = $context['tricoma_pure'] ?? null;
 
                 if ($hasSync) {
                     $quantity = $context['quantity'] ?? null;
@@ -105,6 +110,7 @@ if ($asin !== '') {
                     'asin' => $entryAsin,
                     'amazon_bisher' => $amazon,
                     'tricoma_neu' => $tricoma,
+                    'tricoma_pure' => $tricoma_pure,
                     'diff' => $diff,
                 ];
             }
@@ -581,11 +587,11 @@ function formatValue($value): string
                     <?php if (!empty($entries)): ?>
                         <div class="stat-card">
                             <div class="stat-label">Erster Eintrag</div>
-                            <div class="stat-value"><?= h($entries[0]['timestamp']) ?></div>
+                            <div class="stat-value"><?= h($entries[count($entries) - 1]['timestamp']) ?></div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-label">Letzter Eintrag</div>
-                            <div class="stat-value"><?= h($entries[count($entries) - 1]['timestamp']) ?></div>
+                            <div class="stat-value"><?= h($entries[0]['timestamp']) ?></div>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -630,8 +636,9 @@ function formatValue($value): string
                                 <th>Zeit</th>
                                 <th>SKU</th>
                                 <th>Amazon bisher</th>
-                                <th>Tricoma neu</th>
-                                <th>Diff</th>
+                                <th>Tricoma (Netto)</th>
+                                <th>Tricoma (Roh)</th>
+                                <th>Diff (T. Netto - A.)</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -655,6 +662,7 @@ function formatValue($value): string
                                     <td style="font-weight: 500;"><?= h((string)$entry['sku']) ?></td>
                                     <td><?= h(formatValue($entry['amazon_bisher'])) ?></td>
                                     <td><?= h(formatValue($entry['tricoma_neu'])) ?></td>
+                                    <td><?= h(formatValue($entry['tricoma_pure'])) ?></td>
                                     <td>
                                         <span class="<?= h($diffClass) ?>">
                                             <?= $diffPrefix ?><?= h(formatValue($entry['diff'])) ?>
@@ -671,11 +679,11 @@ function formatValue($value): string
 
     <?php if (!empty($entries)): ?>
     <script>
-        const historyData = <?= json_encode($entries) ?>;
+        // Sortiere für Chart.js aufsteigend nach Timestamp
+        const historyData = <?= json_encode(array_reverse($entries)) ?>;
         let currentChart;
         let currentData = historyData;
 
-        // Custom styling for Chart.js to match the Space Grotesk theme
         Chart.defaults.font.family = '"Space Grotesk", system-ui, sans-serif';
         Chart.defaults.color = '#64748b';
 
@@ -698,6 +706,11 @@ function formatValue($value): string
                 tricoma: data.map(entry => {
                     if (entry.tricoma_neu === null || entry.tricoma_neu === '') return null;
                     const value = Number(entry.tricoma_neu);
+                    return Number.isFinite(value) ? value : null;
+                }),
+                tricoma_pure: data.map(entry => {
+                    if (entry.tricoma_pure === null || entry.tricoma_pure === '') return null;
+                    const value = Number(entry.tricoma_pure);
                     return Number.isFinite(value) ? value : null;
                 }),
                 amazon: data.map(entry => {
@@ -726,7 +739,7 @@ function formatValue($value): string
                     labels: series.labels,
                     datasets: [
                         {
-                            label: 'Tricoma Bestand',
+                            label: 'Tricoma (Verfügbar)',
                             data: series.tricoma,
                             borderColor: '#0ea5e9', // Tailwind sky-500
                             backgroundColor: 'rgba(14, 165, 233, 0.1)',
@@ -734,6 +747,18 @@ function formatValue($value): string
                             cubicInterpolationMode: 'monotone',
                             pointRadius: 2,
                             pointHoverRadius: 5,
+                            spanGaps: true
+                        },
+                        {
+                            label: 'Tricoma (Roh)',
+                            data: series.tricoma_pure,
+                            borderColor: '#8b5cf6', // Tailwind violet-500
+                            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                            tension: 0.4,
+                            cubicInterpolationMode: 'monotone',
+                            pointRadius: 2,
+                            pointHoverRadius: 5,
+                            borderDash: [5, 5],
                             spanGaps: true
                         },
                         {
@@ -785,7 +810,7 @@ function formatValue($value): string
                                     if (!Number.isFinite(tricoma) || !Number.isFinite(amazon)) return '';
                                     const delta = tricoma - amazon;
                                     const sign = delta > 0 ? '+' : '';
-                                    return `\nDifferenz (T - A): ${sign}${formatNumber(delta)}`;
+                                    return `\nDifferenz (T. Netto - A.): ${sign}${formatNumber(delta)}`;
                                 }
                             }
                         }

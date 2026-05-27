@@ -79,13 +79,15 @@ foreach ($marketplaces as $key => $value) {
             Logger::info("FBA-Artikel erkannt: Bestand wird nicht übermittelt, nur Preisupdate.", ['asin' => $asin, 'sku' => $sku]);
             echo "FBA-Artikel: Überspringe Bestandsupdate für ASIN $asin.<br>\r\n";
         } else {
-            // --- FBM-ARTIKEL: BESTANDSAKTUALISIERUNG ---
+           // --- FBM-ARTIKEL: BESTANDSAKTUALISIERUNG ---
             
             // Alten Amazon-Bestand abfragen (nur für den Abgleich)
             $amazonQuantity = getQuantityBySku($sku, "A6F5BRV91OMPP", $marketplaceId);
             
-            // Echten Bestand aus Tricoma abfragen
+            // Echten Bestand aus Tricoma abfragen (verfügbar = Bestand - offene)
             $tricomaQuantity = getRealTricomaStockByAsin($asin);
+            // Rohen Bestand aus Tricoma abfragen (ohne Abzug offener Lieferungen)
+            $tricomaPure = getTricomaStockByAsin($asin);
 
             // Bestände abgleichen und ggf. warnen
             if ($amazonQuantity !== $tricomaQuantity) {
@@ -93,11 +95,12 @@ foreach ($marketplaces as $key => $value) {
                     'sku' => $sku, 
                     'asin' => $asin, 
                     'amazon_bisher' => $amazonQuantity, 
-                    'tricoma_neu' => $tricomaQuantity
+                    'tricoma_neu' => $tricomaQuantity,
+                    'tricoma_pure' => $tricomaPure
                 ]);
-                echo "Achtung: Bestandsabweichung für SKU $sku (Amazon: $amazonQuantity | Tricoma: $tricomaQuantity)<br>\r\n";
+                echo "Achtung: Bestandsabweichung für SKU $sku (Amazon: $amazonQuantity | Tricoma Netto: $tricomaQuantity | Tricoma Roh: $tricomaPure)<br>\r\n";
             } else {
-                Logger::info("Bestand ist synchron", ['sku' => $sku, 'asin' => $asin, 'quantity' => $tricomaQuantity]);
+                Logger::info("Bestand ist synchron", ['sku' => $sku, 'asin' => $asin, 'quantity' => $tricomaQuantity, 'tricoma_pure' => $tricomaPure]);
             }
 
             // Tricoma-Menge in den Amazon-Feed schreiben
