@@ -479,9 +479,6 @@ function preloadTricomaStocks(array $asinList): array {
         return $result;
     }
     
-    // ... restlicher Code der Funktion bleibt exakt gleich (z.B. foreach, prepare, execute) ...
-    // Nur das 'global $dbConnectionTric;' am Anfang der Funktion kannst du jetzt entfernen.
-    
     // 1. Initialisiere alle ASINs standardmäßig mit 0
     foreach ($asinList as $asin) {
         $result[$asin] = ['pure' => 0, 'real' => 0];
