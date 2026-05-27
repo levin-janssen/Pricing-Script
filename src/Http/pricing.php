@@ -1,12 +1,17 @@
 <?php
-// START GESAMT-TIMER
 $scriptStartTime = microtime(true);
 
 ini_set('default_charset',  'UTF-8');
-ini_set('error_log', APP_ROOT . '/error.log');
+ini_set('error_log', dirname(__DIR__, 2) . '/error.log'); 
+
+require_once __DIR__ . '/../Support/Logger.php';
+require_once __DIR__ . '/../Services/sp_api_functions.php';
+require_once __DIR__ . '/../Services/AmazonFeedBuilder.php';
+require_once __DIR__ . '/../Services/ManoManoFeedBuilder.php';
+require_once dirname(__DIR__, 2) . '/config/marketplaces.php';
 
 $logRetentionDays = 30;
-$logDir = APP_ROOT . '/logs';
+$logDir = dirname(__DIR__, 2) . '/logs';
 $cleanupMarker = $logDir . '/.cleanup.last';
 $cleanupIntervalSeconds = 6 * 60 * 60; // Avoid re-scanning logs every run.
 
@@ -21,7 +26,6 @@ if (is_dir($logDir)) {
 
     if ($runCleanup) {
         $cutoff = time() - ($logRetentionDays * 86400);
-        // Clean both app_ and performance_ logs
         foreach (glob($logDir . '/app_*.log') as $file) {
             if (filemtime($file) < $cutoff) @unlink($file);
         }
@@ -40,14 +44,10 @@ $dbConnection->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_WARNING);
 $dbConnectionTric = new PDO('mysql:dbname=***REMOVED***;host=***REMOVED***;', '***REMOVED***', '***REMOVED***');
 $dbConnectionTric->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 $dbConnectionTric->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
+
 Logger::performance("Database Connections Established", microtime(true) - $dbStartTime);
 
-#require APP_ROOT . '/vendor/autoload.php';
-require_once APP_ROOT . '/src/Support/Logger.php';
-require_once APP_ROOT . '/src/Services/sp_api_functions.php';
-require_once APP_ROOT . '/config/marketplaces.php';
-require_once APP_ROOT . '/src/Services/AmazonFeedBuilder.php';
-require_once APP_ROOT . '/src/Services/ManoManoFeedBuilder.php';
+
 $AmazonBuilder = new AmazonFeedBuilder("A6F5BRV91OMPP", "2.0", "de_DE");
 $ManoManobuilderDE = new ManoManoFeedBuilder("cxkiqBhdGZUBLpWPOyyPDMPs67iZvMJp", 7877481);
 $ManoManobuilderFR = new ManoManoFeedBuilder("Hj8MyH9mXKy2Xv7ITTqeqrNkRbxro2Nm", 7877481);

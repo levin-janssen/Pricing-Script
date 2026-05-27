@@ -20,4 +20,5 @@ ehthumbs.db
 Thumbs.db
 
 # Log files
+logs/
 *.log
