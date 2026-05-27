@@ -162,6 +162,9 @@ $response = $ManoManobuilderFR->send();
 print_r($response);
 Logger::info("ManoMano FR Feed sent", ['response' => $response]);
 
+Logger::info("Done processing Marketplace", ['marketplace' => $key, 'currency' => $currencyCode]);
+
+
 function processAsin($asin) {
     echo "<br>\r\n<br>\r\n---  ASIN: $asin ---<br>\r\n";
 
@@ -420,31 +423,31 @@ function getTricomaStockByAsin($asin) {
 function getRealTricomaStockByAsin(string $asin): int {
     global $dbConnectionTric;
 
-    $query = "
-        SELECT (
-            COALESCE((
-                SELECT SUM(l.menge)
-                FROM produkte_felder_werte pfw1
-                INNER JOIN lager l ON pfw1.produktid = l.vk_ID
-                WHERE pfw1.feldid = 57 AND pfw1.wert1 = :asin
-            ), 0)
-            -
-            COALESCE((
-                SELECT SUM(lp.anzahl)
-                FROM lieferungen_positionen lp
-                INNER JOIN produkte_felder_werte pfw2 ON pfw2.produktid = lp.produktid
-                INNER JOIN lieferungen lief ON lp.lieferungsid = lief.ID
-                WHERE pfw2.feldid = 57 AND pfw2.wert1 = :asin AND lief.versandart = ''
-            ), 0)
-        ) AS available_stock
+    // 1. Rohbestand abfragen (Wir wissen aus deinen Logs, dass das perfekt funktioniert -> z.B. 94)
+    $tricomaPure = getTricomaStockByAsin($asin);
+
+    // 2. Nur die offenen Positionen abfragen
+    $queryOpen = "
+        SELECT SUM(lp.anzahl) AS open_quantity
+        FROM lieferungen_positionen lp
+        INNER JOIN produkte_felder_werte pfw ON pfw.produktid = lp.produktid
+        INNER JOIN lieferungen lief ON lp.lieferungsid = lief.ID
+        WHERE pfw.feldid = 57 
+          AND pfw.wert1 = :asin 
+          AND lief.versandart = ''
     ";
 
-    $stmt = $dbConnectionTric->prepare($query);
+    $stmt = $dbConnectionTric->prepare($queryOpen);
     $stmt->execute([':asin' => $asin]);
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    // Fallback auf 0, falls keine offenen Lieferungen gefunden wurden
+    $openOrders = ($result !== false && $result['open_quantity'] !== null) ? (int)$result['open_quantity'] : 0;
 
-    $realStock = (int) ($result['available_stock'] ?? 0);
+    // 3. Echter Bestand = Rohbestand - Offene Lieferungen
+    $realStock = $tricomaPure - $openOrders;
 
+    // 4. Verhindere negative Bestände
     return $realStock > 0 ? $realStock : 0;
 }
 
