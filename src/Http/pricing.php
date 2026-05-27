@@ -85,7 +85,7 @@ foreach ($marketplaces as $key => $value) {
             $amazonQuantity = getQuantityBySku($sku, "A6F5BRV91OMPP", $marketplaceId);
             
             // Echten Bestand aus Tricoma abfragen
-            $tricomaQuantity = getTricomaStockByAsin($asin);
+            $tricomaQuantity = getRealTricomaStockByAsin($asin);
 
             // Bestände abgleichen und ggf. warnen
             if ($amazonQuantity !== $tricomaQuantity) {
@@ -412,6 +412,37 @@ function getTricomaStockByAsin($asin) {
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
     
     return $result['total_quantity'] !== null ? (int)$result['total_quantity'] : 0;
+}
+
+function getRealTricomaStockByAsin(string $asin): int {
+    global $dbConnectionTric;
+
+    $query = "
+        SELECT (
+            COALESCE((
+                SELECT SUM(l.menge)
+                FROM produkte_felder_werte pfw1
+                INNER JOIN lager l ON pfw1.produktid = l.vk_ID
+                WHERE pfw1.feldid = 57 AND pfw1.wert1 = :asin
+            ), 0)
+            -
+            COALESCE((
+                SELECT SUM(lp.anzahl)
+                FROM lieferungen_positionen lp
+                INNER JOIN produkte_felder_werte pfw2 ON pfw2.produktid = lp.produktid
+                INNER JOIN lieferungen lief ON lp.lieferungsid = lief.ID
+                WHERE pfw2.feldid = 57 AND pfw2.wert1 = :asin AND lief.versandart = ''
+            ), 0)
+        ) AS available_stock
+    ";
+
+    $stmt = $dbConnectionTric->prepare($query);
+    $stmt->execute([':asin' => $asin]);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    $realStock = (int) ($result['available_stock'] ?? 0);
+
+    return $realStock > 0 ? $realStock : 0;
 }
 
 ?>
