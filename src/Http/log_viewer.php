@@ -125,6 +125,21 @@ $twoHoursAgo = date('Y-m-d H:i:s', time() - 7200);
 $isToday = ($selectedDate === date('Y-m-d'));
 $displayRuns = [];
 
+// Runs ohne neue Logs fuer >10 Minuten als Fehler markieren (nur heute, nur wenn nicht abgeschlossen)
+$nowTs = time();
+foreach ($recentRuns as $runId => $data) {
+    $isComplete = isset($runTotalTimes[$runId]);
+    $isStale = false;
+    if ($isToday && !$isComplete) {
+        $lastSeenTs = strtotime($data['last_seen']);
+        if ($lastSeenTs !== false && ($nowTs - $lastSeenTs) > 600) {
+            $isStale = true;
+        }
+    }
+    $recentRuns[$runId]['is_complete'] = $isComplete;
+    $recentRuns[$runId]['is_stale'] = $isStale;
+}
+
 foreach ($recentRuns as $rId => $data) {
     if ($isToday) {
         if ($data['last_seen'] >= $twoHoursAgo) {
@@ -137,9 +152,9 @@ foreach ($recentRuns as $rId => $data) {
 usort($displayRuns, static fn($a, $b) => strcmp($b['first_seen'], $a['first_seen']));
 $displayRuns = array_slice($displayRuns, 0, 15);
 
-// Graph-Daten fuer die letzten Runs (nur Runs mit Gesamtzeit)
+// Graph-Daten fuer alle Runs des gewaehlten Tages (nur Runs mit Gesamtzeit)
 $graphData = [];
-foreach ($displayRuns as $run) {
+foreach ($recentRuns as $run) {
     $runId = $run['runId'];
     if ($runId === '' || !isset($runTotalTimes[$runId])) {
         continue;
@@ -147,13 +162,13 @@ foreach ($displayRuns as $run) {
     $graphData[] = [
         'runId' => $runId,
         'duration' => (float)$runTotalTimes[$runId],
-        'has_error' => (bool)$run['has_error'],
+        'has_error' => (bool)($run['has_error'] || ($run['is_stale'] ?? false)),
+        'first_seen' => $run['first_seen'] ?? $run['last_seen'],
         'last_seen' => $run['last_seen']
     ];
 }
-// Aelteste Runs links anzeigen
 if (!empty($graphData)) {
-    $graphData = array_values(array_reverse($graphData));
+    usort($graphData, static fn($a, $b) => strcmp($a['first_seen'], $b['first_seen']));
 }
 
 
@@ -422,6 +437,22 @@ function h(string $value): string
             background: var(--ink);
             color: white;
             border-color: var(--ink);
+        }
+
+        .quick-run-badge.complete {
+            border-color: #86efac;
+            background: #ecfdf3;
+            color: #15803d;
+        }
+
+        .quick-run-badge.complete:hover {
+            border-color: #4ade80;
+        }
+
+        .quick-run-badge.complete.active {
+            background: #15803d;
+            color: white;
+            border-color: #15803d;
         }
 
         .quick-run-badge.error {
@@ -853,11 +884,12 @@ function h(string $value): string
                     <div class="quick-runs-list">
                         <?php foreach ($displayRuns as $run): ?>
                             <?php 
-                                $isError = $run['has_error'] ? 'error' : '';
+                                $isError = ($run['has_error'] || !empty($run['is_stale'])) ? 'error' : '';
+                                $isComplete = (!$run['has_error'] && empty($run['is_stale']) && !empty($run['is_complete'])) ? 'complete' : '';
                                 $isActive = ($filterRunId === $run['runId']) ? 'active' : '';
                             ?>
                             <a href="?date=<?= h($selectedDate) ?>&runid=<?= h($run['runId']) ?>" 
-                               class="quick-run-badge <?= $isError ?> <?= $isActive ?>"
+                               class="quick-run-badge <?= $isError ?> <?= $isComplete ?> <?= $isActive ?>"
                                title="Letzter Eintrag: <?= h($run['last_seen']) ?>">
                                <?= h($run['runId']) ?>
                             </a>
@@ -938,8 +970,8 @@ function h(string $value): string
 
         <?php if ($filterRunId === ''): ?>
             <div class="panel">
-                <h2>Run-Laufzeiten (letzte Runs)</h2>
-                <p class="muted">Nur Runs mit gemessener Gesamtlaufzeit werden angezeigt.</p>
+                <h2>Run-Laufzeiten (alle Runs des Tages)</h2>
+                <p class="muted">Alle Runs des gewaehlten Tages. Nur Runs mit gemessener Gesamtlaufzeit werden angezeigt.</p>
                 <?php if (empty($graphData)): ?>
                     <div class="chart-empty">Keine Laufzeiten fuer die letzten Runs gefunden.</div>
                 <?php else: ?>
@@ -1035,7 +1067,7 @@ function h(string $value): string
             const tooltip = chartWrap ? chartWrap.querySelector('#run-duration-tooltip') : null;
             const grid = 'rgba(148, 163, 184, 0.35)';
 
-            let barRects = [];
+            let pointNodes = [];
             let hoverIndex = -1;
 
             const escapeHtml = (value) => String(value)
@@ -1065,17 +1097,11 @@ function h(string $value): string
 
             const formatAuto = (seconds) => formatScaled(seconds, pickUnit(seconds));
 
-            const drawRoundedRect = (x, y, width, height, radius) => {
-                const r = Math.min(radius, width / 2, height / 2);
-                ctx.beginPath();
-                ctx.moveTo(x + r, y);
-                ctx.lineTo(x + width - r, y);
-                ctx.quadraticCurveTo(x + width, y, x + width, y + r);
-                ctx.lineTo(x + width, y + height);
-                ctx.lineTo(x, y + height);
-                ctx.lineTo(x, y + r);
-                ctx.quadraticCurveTo(x, y, x + r, y);
-                ctx.closePath();
+            const formatShortTime = (value) => {
+                if (!value) return '';
+                const parts = value.split(' ');
+                if (parts.length < 2) return value;
+                return parts[1].slice(0, 5);
             };
 
             const drawChart = () => {
@@ -1096,10 +1122,6 @@ function h(string $value): string
 
                 const maxDuration = Math.max(...data.map((item) => item.duration));
                 const scaleMax = maxDuration > 0 ? maxDuration * 1.1 : 1;
-                const barSlot = plotWidth / data.length;
-                const barGap = Math.min(10, barSlot * 0.25);
-                const barWidth = Math.max(8, barSlot - barGap);
-
                 ctx.strokeStyle = stroke;
                 ctx.fillStyle = muted;
                 ctx.lineWidth = 1;
@@ -1139,49 +1161,86 @@ function h(string $value): string
                 ctx.restore();
 
                 const labelStep = data.length > 12 ? Math.ceil(data.length / 12) : 1;
-                barRects = [];
+                const stepX = data.length > 1 ? plotWidth / (data.length - 1) : 0;
 
-                data.forEach((item, index) => {
-                    const x = padding.left + index * barSlot + (barSlot - barWidth) / 2;
-                    const barHeight = (item.duration / scaleMax) * plotHeight;
-                    const y = padding.top + plotHeight - barHeight;
+                pointNodes = data.map((item, index) => {
+                    const x = data.length > 1 ? padding.left + stepX * index : padding.left + plotWidth / 2;
+                    const y = padding.top + plotHeight - (item.duration / scaleMax) * plotHeight;
+                    return { x, y, item };
+                });
 
-                    if (barHeight <= 0) {
-                        return;
-                    }
-
-                    const baseColor = item.has_error ? '#b91c1c' : accent;
-                    const radius = Math.min(10, barWidth / 2, barHeight / 2);
-
+                if (pointNodes.length > 1) {
                     ctx.save();
-                    if (index === hoverIndex) {
-                        ctx.shadowColor = 'rgba(15, 23, 42, 0.25)';
-                        ctx.shadowBlur = 16;
-                        ctx.shadowOffsetY = 6;
-                    }
-
-                    ctx.fillStyle = baseColor;
-                    drawRoundedRect(x, y, barWidth, barHeight, radius);
-                    ctx.fill();
-
-                    const gloss = ctx.createLinearGradient(0, y, 0, y + barHeight);
-                    gloss.addColorStop(0, 'rgba(255,255,255,0.45)');
-                    gloss.addColorStop(0.6, 'rgba(255,255,255,0.12)');
-                    gloss.addColorStop(1, 'rgba(255,255,255,0)');
-                    ctx.fillStyle = gloss;
-                    drawRoundedRect(x, y, barWidth, barHeight, radius);
+                    const area = ctx.createLinearGradient(0, padding.top, 0, padding.top + plotHeight);
+                    area.addColorStop(0, 'rgba(234, 88, 12, 0.18)');
+                    area.addColorStop(1, 'rgba(234, 88, 12, 0.02)');
+                    ctx.beginPath();
+                    pointNodes.forEach((point, index) => {
+                        if (index === 0) {
+                            ctx.moveTo(point.x, point.y);
+                        } else {
+                            ctx.lineTo(point.x, point.y);
+                        }
+                    });
+                    ctx.lineTo(pointNodes[pointNodes.length - 1].x, padding.top + plotHeight);
+                    ctx.lineTo(pointNodes[0].x, padding.top + plotHeight);
+                    ctx.closePath();
+                    ctx.fillStyle = area;
                     ctx.fill();
                     ctx.restore();
+                }
 
-                    barRects.push({ x, y, width: barWidth, height: barHeight, item });
+                if (pointNodes.length >= 1) {
+                    ctx.save();
+                    ctx.strokeStyle = accent;
+                    ctx.lineWidth = 3;
+                    ctx.lineJoin = 'round';
+                    ctx.lineCap = 'round';
+                    ctx.shadowColor = 'rgba(234, 88, 12, 0.35)';
+                    ctx.shadowBlur = 12;
+                    ctx.beginPath();
+                    pointNodes.forEach((point, index) => {
+                        if (index === 0) {
+                            ctx.moveTo(point.x, point.y);
+                        } else {
+                            ctx.lineTo(point.x, point.y);
+                        }
+                    });
+                    ctx.stroke();
+                    ctx.restore();
+                }
 
-                    if (index % labelStep === 0) {
-                        ctx.fillStyle = muted;
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'alphabetic';
-                        const label = item.runId.length > 6 ? item.runId.slice(0, 6) : item.runId;
-                        ctx.fillText(label, x + barWidth / 2, height - 16);
+                pointNodes.forEach((point, index) => {
+                    const isError = point.item.has_error;
+                    const radius = index === hoverIndex ? 6 : 4;
+
+                    if (index === hoverIndex) {
+                        ctx.beginPath();
+                        ctx.fillStyle = 'rgba(15, 23, 42, 0.12)';
+                        ctx.arc(point.x, point.y, radius + 6, 0, Math.PI * 2);
+                        ctx.fill();
                     }
+
+                    ctx.beginPath();
+                    ctx.fillStyle = isError ? '#b91c1c' : accent;
+                    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                });
+
+                ctx.fillStyle = muted;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'alphabetic';
+                pointNodes.forEach((point, index) => {
+                    if (index % labelStep !== 0) {
+                        return;
+                    }
+                    const labelSource = point.item.first_seen || point.item.last_seen || point.item.runId;
+                    const label = formatShortTime(labelSource) || point.item.runId.slice(0, 6);
+                    ctx.fillText(label, point.x, height - 16);
                 });
 
                 ctx.strokeStyle = stroke;
@@ -1193,17 +1252,18 @@ function h(string $value): string
                 ctx.stroke();
             };
 
-            const updateTooltip = (bar, event) => {
+            const updateTooltip = (point, event) => {
                 if (!tooltip || !chartWrap) {
                     return;
                 }
-                const statusLabel = bar.item.has_error ? 'Fehler' : 'OK';
-                const statusClass = bar.item.has_error ? 'error' : 'ok';
+                const statusLabel = point.item.has_error ? 'Fehler' : 'OK';
+                const statusClass = point.item.has_error ? 'error' : 'ok';
                 tooltip.innerHTML = `
-                    <strong>Run ${escapeHtml(bar.item.runId)}</strong>
-                    <div class="tooltip-row"><span>Laufzeit</span><span>${escapeHtml(formatAuto(bar.item.duration))}</span></div>
+                    <strong>Run ${escapeHtml(point.item.runId)}</strong>
+                    <div class="tooltip-row"><span>Laufzeit</span><span>${escapeHtml(formatAuto(point.item.duration))}</span></div>
                     <div class="tooltip-row"><span>Status</span><span class="status ${statusClass}">${statusLabel}</span></div>
-                    <div class="tooltip-row"><span>Letzter Eintrag</span><span>${escapeHtml(bar.item.last_seen)}</span></div>
+                    <div class="tooltip-row"><span>Erster Eintrag</span><span>${escapeHtml(point.item.first_seen || point.item.last_seen)}</span></div>
+                    <div class="tooltip-row"><span>Letzter Eintrag</span><span>${escapeHtml(point.item.last_seen)}</span></div>
                 `;
 
                 tooltip.classList.add('is-visible');
@@ -1241,19 +1301,30 @@ function h(string $value): string
                 const rect = canvas.getBoundingClientRect();
                 const x = event.clientX - rect.left;
                 const y = event.clientY - rect.top;
-                const index = barRects.findIndex((bar) => x >= bar.x && x <= bar.x + bar.width && y >= bar.y && y <= bar.y + bar.height);
+                let nearestIndex = -1;
+                let nearestDistance = Number.POSITIVE_INFINITY;
 
-                if (index !== hoverIndex) {
-                    hoverIndex = index;
+                pointNodes.forEach((point, index) => {
+                    const dx = x - point.x;
+                    const dy = y - point.y;
+                    const distance = Math.sqrt((dx * dx) + (dy * dy));
+                    if (distance < nearestDistance) {
+                        nearestDistance = distance;
+                        nearestIndex = index;
+                    }
+                });
+
+                if (nearestIndex !== hoverIndex) {
+                    hoverIndex = nearestIndex;
                     drawChart();
                 }
 
-                if (index === -1) {
+                if (nearestIndex === -1 || nearestDistance > 16) {
                     hideTooltip();
                     return;
                 }
 
-                updateTooltip(barRects[index], event);
+                updateTooltip(pointNodes[nearestIndex], event);
             };
 
             drawChart();
