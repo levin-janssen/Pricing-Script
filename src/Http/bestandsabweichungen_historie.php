@@ -111,7 +111,7 @@ if ($asin !== '') {
         }
 
         usort($entries, static function (array $left, array $right): int {
-            return strcmp($left['timestamp'], $right['timestamp']);
+            return strcmp($right['timestamp'], $left['timestamp']);
         });
     }
 }
