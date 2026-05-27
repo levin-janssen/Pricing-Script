@@ -195,9 +195,8 @@ Logger::performance("Feed Generation & Submission", microtime(true) - $feedStart
 Logger::performance("Total Script Execution Time", microtime(true) - $scriptStartTime);
 
 // --- FUNCTIONS REMAIN THE SAME BELOW THIS LINE ---
-function processAsin($asin) {
-    echo "<br>\r\n<br>\r\n---  ASIN: $asin ---<br>\r\n";
 
+function processAsin($asin) {
     global $dbConnection;
     global $marketplaceId;
     global $dbName;
@@ -217,9 +216,10 @@ function processAsin($asin) {
     $produktDataGrenzen = $produktDataStmtGrenzen->fetch(PDO::FETCH_ASSOC);
 
     if (!$produktData) {
-        echo "Error: Produktdaten nicht gefunden für ASIN $asin.<br>\r\n";
+        Logger::error("Produktdaten nicht gefunden", ['asin' => $asin]);
         return null;
     }
+    
     $produktid = $produktData['ID'];
     $sku = $produktData['SKU'];
     $min_preis = filter_var($produktDataGrenzen['min_preis'], FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE) ?? 0.01;
@@ -229,49 +229,60 @@ function processAsin($asin) {
     if($max_preis == 0){
         $max_preis = 1000000.00;
     }
-    echo "ProduktID: $produktid, SKU: $sku, MinPreis: $min_preis, MaxPreis: $max_preis<br>\r\n";  
+
+    // LOG: Preisgrenzen aus der Datenbank
+    Logger::info("Preisgrenzen geladen", [
+        'asin' => $asin, 
+        'sku' => $sku, 
+        'min_preis' => $min_preis, 
+        'max_preis' => $max_preis,
+        'step_small' => $stepsize_small,
+        'step_big' => $stepsize_big
+    ]);
 
     $prevStateStmt = $dbConnection->prepare("SELECT eigenerPreis, niedrigsterPreis, buyboxpreis, action, counter FROM tric4calc.$dbName WHERE produktid = :produktid ORDER BY datum DESC LIMIT 1");
     $prevStateStmt->execute([':produktid' => $produktid]);
     $previousState = $prevStateStmt->fetch(PDO::FETCH_ASSOC);
-    $eigenerPreis_alt = filter_var($previousState['eigenerPreis'] ?? null, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
-    $niedrigsterPreis_alt = filter_var($previousState['niedrigsterPreis'] ?? null, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
-    $buyboxpreis_alt = filter_var($previousState['buyboxpreis'] ?? null, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
-    $action_alt = $previousState['action'] ?? null;
-    $counter = $previousState['counter'] ?? null;
-    echo "Previous State - Own: $eigenerPreis_alt, Lowest: $niedrigsterPreis_alt, BB: $buyboxpreis_alt, Action: $action_alt, Counter: $counter<br>\r\n";
+    $counter = $previousState['counter'] ?? 0;
 
-    // Inside processAsin(), right before callItemsAPI:
-
+    // API Aufrufe (mit Performance-Tracking)
     $apiStartTime = microtime(true);
-    $data = callItemsAPI($asin, $marketplaceId);
-    Logger::performance("API: callItemsAPI", microtime(true) - $apiStartTime, ['asin' => $asin]);
-
+    $data = callItemsAPI($asin,  $marketplaceId);
     if (!$data) {
-        error_log("Error: API call failed for ASIN $asin. Data is null.");
-         echo "Error: Fehler beim Abrufen der API Data für ASIN $asin.<br>\r\n";
-         return null;
+        Logger::error("API Data Request fehlgeschlagen", ['asin' => $asin, 'sku' => $sku]);
+        return null;
     }
+    Logger::performance("API: callItemsAPI", microtime(true) - $apiStartTime, ['asin' => $asin, 'sku' => $sku]);
+
     $buyboxpreis_raw = getInfoByASIN($data, "buyboxpreis");
     $niedrigsterPreis_raw = getLowestPrice($data);
-
-    // And later, wrap the getOwnPriceBySku call:
+    
     $ownPriceStartTime = microtime(true);
-    $eigenerPreis_raw = getOwnPriceBySku($sku, $marketplaceId);
-    Logger::performance("API: getOwnPriceBySku", microtime(true) - $ownPriceStartTime, ['sku' => $sku]);
-
+    $eigenerPreis_raw = getOwnPriceBySku($sku,  $marketplaceId);
+    Logger::performance("API: getOwnPriceBySku", microtime(true) - $ownPriceStartTime, ['asin' => $asin, 'sku' => $sku]);
+    
     $isWinner = IsBuyBoxWinner(getInfoByASIN($data, "offers"));
 
     $buyboxpreis = filter_var($buyboxpreis_raw, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
     $niedrigsterPreis = filter_var($niedrigsterPreis_raw, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
     $eigenerPreis = filter_var($eigenerPreis_raw, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
-    echo "Eigener Preis: $eigenerPreis, Niedrigster Preis: $niedrigsterPreis, BB Preis: $buyboxpreis, Is Winner: " . ($isWinner ? 'Ja' : 'Nein') . "<br>\r\n";
+
+    // LOG: Aktuelle Marktsituation von Amazon
+    Logger::info("Marktdaten empfangen", [
+        'asin' => $asin, 
+        'sku' => $sku, 
+        'eigener_preis_aktuell' => $eigenerPreis, 
+        'niedrigster_preis' => $niedrigsterPreis, 
+        'buybox_preis' => $buyboxpreis, 
+        'buybox_winner' => $isWinner ? 'Ja' : 'Nein',
+        'counter_alt' => $counter
+    ]);
 
     $initStmt = $dbConnection->prepare("SELECT * FROM tric4calc.$dbName WHERE produktid = :produktid ORDER BY datum DESC LIMIT 1");
     $initStmt->execute([':produktid' => $produktid]);
     $initResult = $initStmt->fetch(PDO::FETCH_ASSOC);
     if($initResult == null){
-        error_log("Info: Initial state not found for ASIN $asin. Setting initial values.");
+        Logger::info("Inititaler Datenbankeintrag erstellt (noch keine Preisberechnung)", ['asin' => $asin, 'sku' => $sku]);
         $stmtBuybox = $dbConnection->prepare(
             "INSERT INTO tric4calc.$dbName (produktid, eigenerPreis, niedrigsterPreis, buyboxPreis, datum, action, isWinner)
              VALUES (:produktid, :eigenerPreis, :niedrigsterPreis, :buyboxPreis, NOW(), 'init', :isWinner)"
@@ -280,20 +291,19 @@ function processAsin($asin) {
         $stmtBuybox->bindValue(':eigenerPreis', $eigenerPreis, $eigenerPreis !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
         $stmtBuybox->bindValue(':niedrigsterPreis', $niedrigsterPreis, $niedrigsterPreis !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
         $stmtBuybox->bindValue(':buyboxPreis', $buyboxpreis, $buyboxpreis !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
-        $stmtBuybox->bindValue(':isWinner', $isWinner, $isWinner !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmtBuybox->bindValue(':isWinner', $isWinner ? "Ja" : "Nein", $isWinner !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
         $stmtBuybox->execute();
         return null;
     }
 
     if ($eigenerPreis === null) {
-        echo "Error: Eigener Preis konnte nicht festgestellt werden. Kein neuer Preis wird berechnet.<br>\r\n";
+        Logger::warning("Eigener Preis konnte nicht festgestellt werden. Berechnung abgebrochen.", ['asin' => $asin, 'sku' => $sku]);
         return null;
     }
 
     logCurrentState($dbConnection, $produktid, $eigenerPreis, $niedrigsterPreis, $buyboxpreis, $counter, $isWinner);
     
     $neuerPreis = null;
-    echo "<script>console.log('Counter pre calc: $counter');</script>";
 
     if($eigenerPreis > 10){
         $step_size = $stepsize_big;
@@ -301,6 +311,7 @@ function processAsin($asin) {
         $step_size = $stepsize_small;
     }
 
+    // --- PREISBERECHNUNG ---
     if ($isWinner){
         if($counter != 0){
             if($counter == 3 && ($niedrigsterPreis - ($step_size * 2)) > $eigenerPreis ){
@@ -355,27 +366,36 @@ function processAsin($asin) {
             $neuerPreis = $niedrigsterPreis - $step_size;
             $counter = 3;
         }else{
-            echo "Error: Counter hat Wert $counter (Ungültig!)<br>\r\n";
+            Logger::error("Ungueltiger Counter-Wert", ['asin' => $asin, 'sku' => $sku, 'counter' => $counter]);
             return null;
         }
     }
-    echo "<script>console.log('Counter post calc: $counter');</script>";
 
     if ($neuerPreis !== null) {
+        $kalkulierterPreis = $neuerPreis; // Preis vor Min/Max Anpassung merken
+        
         $neuerPreis = min($neuerPreis, $max_preis);
-         echo "Applying Max Price ($max_preis): $neuerPreis<br>\r\n";
         $neuerPreis = max($min_preis, $neuerPreis);
-        echo "Applying Min Price ($min_preis): $neuerPreis<br>\r\n";
-
         $neuerPreis = round($neuerPreis, 2);
-        echo "Final Calculated Price (after constraints & rounding): $neuerPreis<br>\r\n";
 
+        $limitierung = "Keine";
+        if ($neuerPreis > $kalkulierterPreis) $limitierung = "Durch Min-Preis angehoben";
+        if ($neuerPreis < $kalkulierterPreis) $limitierung = "Durch Max-Preis gedeckelt";
+
+        // LOG: Die finale Preis-Entscheidung
+        Logger::info("Preisberechnung abgeschlossen", [
+            'asin' => $asin,
+            'sku' => $sku,
+            'kalkulierter_preis' => $kalkulierterPreis,
+            'finaler_neuer_preis' => $neuerPreis,
+            'counter_neu' => $counter,
+            'limitierung' => $limitierung
+        ]);
        
         logPlannedAction($dbConnection, $produktid, $neuerPreis, $niedrigsterPreis, $buyboxpreis, $action, $counter, $isWinner);
-        echo "DB Logging: Scheduled '$action' action with new price $neuerPreis and counter $counter.<br>\r\n";
         
     } else {
-        echo "Error: In der Berechnung ist ein Fehler aufgetreten. Der Preis wurde nicht aktualisiert.<br>\r\n";
+        Logger::error("Berechnungsfehler: Neuer Preis ist null.", ['asin' => $asin, 'sku' => $sku]);
         return $eigenerPreis ?? null; 
     }
 
