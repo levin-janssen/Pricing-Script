@@ -590,10 +590,8 @@ function callItemsAPI($asin, $marketplaceId = "A1PA6795UKMFR9")
 
 function getAccessToken()
 {
-    // 1. Define a static variable to hold the token across multiple function calls
+    // 1. Static cache
     static $cachedToken = null;
-
-    // 2. If we already fetched a valid token during this script execution, return it immediately
     if ($cachedToken !== null) {
         return $cachedToken;
     }
@@ -602,31 +600,37 @@ function getAccessToken()
         $baseUrl = "https://api.amazon.com/auth/O2/token";
         $payload = [
             "grant_type" => "refresh_token",
-            "refresh_token" => refresh_token, // Ensure this constant is defined in your config
-            "client_id" => lwa_app_id,        // Ensure this constant is defined in your config
-            "client_secret" => lwa_client_secret, // Ensure this constant is defined in your config
+            "refresh_token" => refresh_token, 
+            "client_id" => lwa_app_id,        
+            "client_secret" => lwa_client_secret, 
         ];
 
-        $options = [
-            "http" => [
-                "method" => "POST",
-                "header" => "Content-Type: application/x-www-form-urlencoded",
-                "content" => http_build_query($payload),
-            ],
-        ];
+        // 2. Use cURL instead of file_get_contents for better SSL handling
+        $ch = curl_init($baseUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($payload));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            "Content-Type: application/x-www-form-urlencoded"
+        ]);
+        
+        // 3. Strict timeouts so a bad handshake doesn't hang the script forever
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); 
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
 
-        $context = stream_context_create($options);
-        
-        // Suppress native PHP warnings with @ and handle the failure gracefully
-        $response = @file_get_contents($baseUrl, false, $context);
-        
+        $response = curl_exec($ch);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        // Check if cURL failed at the network/SSL level
         if ($response === false) {
-             throw new Exception("Failed to connect to LWA auth server.");
+             throw new Exception("cURL network error during auth: " . $curlError);
         }
 
         $data = json_decode($response, true);
 
-        // 3. Ensure we actually got a token before caching it to avoid caching a failure
+        // 4. Safely check if the token exists before caching
         if (isset($data["access_token"])) {
             $cachedToken = $data["access_token"];
             return $cachedToken;
@@ -635,7 +639,6 @@ function getAccessToken()
         }
 
     } catch (Exception $err) {
-        // Log the error instead of just echoing it so it doesn't break JSON feeds or HTTP headers
         error_log("Error in getAccessToken: " . $err->getMessage());
         return null;
     }
