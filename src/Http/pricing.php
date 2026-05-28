@@ -116,6 +116,9 @@ foreach ($marketplaces as $key => $value) {
             $amazonQuantity = null;
             $quantityResponse = $concurrentData['quantity']['data'] ?? null;
             $quantityHttpCode = $concurrentData['quantity']['http_code'] ?? 0;
+            
+            // NEW: Pull the raw cURL error string we captured in the concurrent function
+            $quantityCurlError = $concurrentData['quantity']['error'] ?? '';
 
             if (isset($quantityResponse['fulfillmentAvailability'][0]['quantity'])) {
                 $amazonQuantity = $quantityResponse['fulfillmentAvailability'][0]['quantity'];
@@ -123,11 +126,20 @@ foreach ($marketplaces as $key => $value) {
             
             if ($amazonQuantity === null) {
                 // Determine the exact cause for better debugging
-                if ($quantityHttpCode === 404) {
+                if ($quantityHttpCode === 0) {
+                     Logger::warning("Verbindungsabbruch/Timeout zu Amazon (HTTP 0). Überspringe ASIN.", [
+                         'asin' => $asin, 
+                         'sku' => $sku, 
+                         'curl_error' => $quantityCurlError // This will tell you exactly what failed (e.g., "SSL timeout")
+                     ]);
+                     continue; // Safely skip to the next ASIN instead of crashing
+                } elseif ($quantityHttpCode === 404) {
                      Logger::warning("SKU auf Amazon nicht gefunden (HTTP 404).", ['asin' => $asin, 'sku' => $sku]);
+                     continue;
                 } elseif (isset($quantityResponse['errors'])) {
                      $errMsg = $quantityResponse['errors'][0]['message'] ?? 'Unbekannter API Fehler';
                      Logger::error("API Fehler beim Abrufen des Bestands: " . $errMsg, ['asin' => $asin, 'sku' => $sku]);
+                     continue;
                 } else {
                      Logger::error("Fehler beim Abrufen des Amazon-Bestands (Concurrent Quantity). Unerwartete Antwort.", [
                          'asin' => $asin, 
@@ -135,6 +147,7 @@ foreach ($marketplaces as $key => $value) {
                          'http_code' => $quantityHttpCode,
                          'response' => $quantityResponse
                      ]);
+                     continue;
                 }
             }
             
