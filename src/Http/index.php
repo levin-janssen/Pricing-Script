@@ -9,20 +9,29 @@ require_once APP_ROOT . '/config/marketplaces.php';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pricing Manager Übersicht</title>
-    <!-- Modern font -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="img/price.ico" sizes="32x32">
+    
     <style>
         :root {
-            --bg-color: #f8fafc;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-            --primary: #3b82f6;
-            --primary-hover: #2563eb;
-            --card-bg: #ffffff;
-            --border-color: #e2e8f0;
+            --ink: #0f172a;
+            --muted: #64748b;
+            --muted-light: #94a3b8;
+            --accent: #ea580c;
+            --primary: #2563eb;
+            --surface: #ffffff;
+            --surface-soft: #f8fafc;
+            --stroke: #e2e8f0;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+            --radius: 12px;
+            --radius-sm: 8px;
             --danger: #ef4444;
-            --warning: #f59e0b;
+            --danger-bg: #fef2f2;
+            --primary-bg: #eff6ff;
         }
 
         * {
@@ -32,47 +41,65 @@ require_once APP_ROOT . '/config/marketplaces.php';
         }
 
         body {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
+            font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+            color: var(--ink);
+            background: radial-gradient(1200px circle at top left, #fff1e6 0%, #f2f6ff 42%, #eefbf7 70%, #f4f4f4 100%);
+            background-attachment: fixed;
+            padding: 40px 20px 80px;
             line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
         }
 
         .dashboard-container {
             max-width: 1280px;
             margin: 0 auto;
-            padding: 2rem;
         }
 
-        .header {
-            margin-bottom: 3rem;
-            text-align: center;
+        /* --- Hero Section --- */
+        .hero {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 40px;
         }
 
-        .header h1 {
+        .hero .eyebrow {
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .hero h1 {
             font-size: 2.5rem;
             font-weight: 700;
-            color: var(--text-main);
-            margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+            color: var(--ink);
         }
 
-        .header p {
-            color: var(--text-muted);
-            font-size: 1.125rem;
+        .hero .subtitle {
+            color: var(--muted);
+            font-size: 1.1rem;
+            max-width: 600px;
+            font-weight: 500;
         }
 
+        /* --- Sections --- */
         .section {
-            margin-bottom: 3rem;
+            margin-bottom: 48px;
         }
 
         .section-title {
-            font-size: 1.5rem;
+            font-size: 1.25rem;
             font-weight: 600;
-            margin-bottom: 1.5rem;
-            color: var(--text-main);
+            margin-bottom: 20px;
+            color: var(--ink);
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 10px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--stroke);
         }
 
         .section-title svg {
@@ -83,28 +110,30 @@ require_once APP_ROOT . '/config/marketplaces.php';
 
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 1.5rem;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 24px;
         }
 
+        /* --- Cards --- */
         .card {
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 1.5rem;
+            background: var(--surface);
+            border: 1px solid var(--stroke);
+            border-radius: var(--radius);
+            padding: 24px;
             text-decoration: none;
             color: inherit;
             transition: all 0.2s ease-in-out;
             display: flex;
             flex-direction: column;
-            gap: 1rem;
+            gap: 16px;
             position: relative;
             overflow: hidden;
+            box-shadow: var(--shadow-sm);
         }
 
         .card:hover {
             transform: translateY(-4px);
-            box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--shadow);
             border-color: var(--primary);
         }
         
@@ -124,6 +153,7 @@ require_once APP_ROOT . '/config/marketplaces.php';
             opacity: 1;
         }
 
+        /* Admin Cards Override */
         .card.admin::before {
             background: var(--danger);
         }
@@ -134,54 +164,75 @@ require_once APP_ROOT . '/config/marketplaces.php';
         .card-header {
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: 16px;
         }
 
         .icon-wrapper {
-            width: 48px;
-            height: 48px;
-            border-radius: 10px;
-            background: #eff6ff;
+            width: 52px;
+            height: 52px;
+            border-radius: 12px;
+            background: var(--primary-bg);
             display: flex;
             align-items: center;
             justify-content: center;
             color: var(--primary);
             flex-shrink: 0;
+            transition: background 0.2s;
+        }
+
+        .card:hover .icon-wrapper {
+            background: #dbeafe;
         }
 
         .card.admin .icon-wrapper {
-            background: #fef2f2;
+            background: var(--danger-bg);
             color: var(--danger);
+        }
+        
+        .card.admin:hover .icon-wrapper {
+            background: #fecaca;
         }
 
         .icon-wrapper svg {
-            width: 24px;
-            height: 24px;
+            width: 26px;
+            height: 26px;
         }
 
         .card-title {
-            font-size: 1.125rem;
+            font-size: 1.15rem;
             font-weight: 600;
-            margin-bottom: 0.25rem;
+            margin-bottom: 4px;
+            color: var(--ink);
         }
 
         .card-desc {
-            font-size: 0.875rem;
-            color: var(--text-muted);
+            font-size: 0.9rem;
+            color: var(--muted);
+            line-height: 1.4;
         }
         
         .marketplace-img {
-            width: 40px;
-            height: 40px;
+            width: 32px;
+            height: 32px;
             object-fit: contain;
+            border-radius: 4px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        @media (max-width: 768px) {
+            body { padding: 24px 16px 40px; }
+            .grid { grid-template-columns: 1fr; }
+            .hero h1 { font-size: 2rem; }
         }
     </style>
 </head>
 <body>
     <div class="dashboard-container">
-        <header class="header">
+        
+        <header class="hero">
+            <p class="eyebrow">Dashboard</p>
             <h1>Pricing Manager</h1>
-            <p>Zentrale Übersicht aller verfügbaren Tools</p>
+            <p class="subtitle">Zentrale Übersicht aller verfügbaren Tools, Marktplätze und Systemkonfigurationen.</p>
         </header>
 
         <!-- HAUPTFUNKTIONEN -->
@@ -203,7 +254,7 @@ require_once APP_ROOT . '/config/marketplaces.php';
                         </div>
                         <div>
                             <div class="card-title">Produktübersicht</div>
-                            <div class="card-desc">Suchen und Details für alle Produkte</div>
+                            <div class="card-desc">Suche, Details und Preisgrenzen für alle Produkte verwalten.</div>
                         </div>
                     </div>
                 </a>
@@ -217,7 +268,7 @@ require_once APP_ROOT . '/config/marketplaces.php';
                         </div>
                         <div>
                             <div class="card-title">Bestandsabweichungen</div>
-                            <div class="card-desc">Aktuelle Änderungen und Diskrepanzen prüfen</div>
+                            <div class="card-desc">Aktuelle Änderungen und Diskrepanzen zwischen Plattformen prüfen.</div>
                         </div>
                     </div>
                 </a>
@@ -231,7 +282,7 @@ require_once APP_ROOT . '/config/marketplaces.php';
                         </div>
                         <div>
                             <div class="card-title">Bestands-Historie</div>
-                            <div class="card-desc">Zeitlicher Verlauf eines einzelnen Produkts</div>
+                            <div class="card-desc">Den genauen zeitlichen Verlauf eines einzelnen Produkts analysieren.</div>
                         </div>
                     </div>
                 </a>
@@ -245,7 +296,7 @@ require_once APP_ROOT . '/config/marketplaces.php';
                         </div>
                         <div>
                             <div class="card-title">Verkaufs-Report</div>
-                            <div class="card-desc">Übersicht vergangener Verkäufe und Kennzahlen</div>
+                            <div class="card-desc">Umfassende Übersicht vergangener Verkäufe und Erfolgskennzahlen.</div>
                         </div>
                     </div>
                 </a>
@@ -258,8 +309,8 @@ require_once APP_ROOT . '/config/marketplaces.php';
                             </svg>
                         </div>
                         <div>
-                            <div class="card-title">Paket- und Versandinfos</div>
-                            <div class="card-desc">Offene Lieferungen und Versandstatistik einsehen</div>
+                            <div class="card-title">Paket- & Versandinfos</div>
+                            <div class="card-desc">Offene Lieferungen und detaillierte Versandstatistik einsehen.</div>
                         </div>
                     </div>
                 </a>
@@ -277,7 +328,7 @@ require_once APP_ROOT . '/config/marketplaces.php';
             <div class="grid">
                 <?php if(!empty($marketplaces)): ?>
                     <?php foreach ($marketplaces as $m): ?>
-                        <a href="<?php echo htmlspecialchars($m['url']); ?>" class="card" target="_blank">
+                        <a href="<?php echo htmlspecialchars($m['url']); ?>" class="card">
                             <div class="card-header">
                                 <div class="icon-wrapper" style="background: transparent;">
                                     <?php if(!empty($m['img'])): ?>
@@ -290,18 +341,20 @@ require_once APP_ROOT . '/config/marketplaces.php';
                                 </div>
                                 <div>
                                     <div class="card-title"><?php echo htmlspecialchars($m['name']); ?></div>
-                                    <div class="card-desc">Preis-Update Tool</div>
+                                    <div class="card-desc">Preis-Update Dashboard für diesen Marktplatz öffnen.</div>
                                 </div>
                             </div>
                         </a>
                     <?php endforeach; ?>
                 <?php else: ?>
-                    <p>Keine Marktplätze konfiguriert.</p>
+                    <div style="grid-column: 1 / -1; padding: 32px; text-align: center; color: var(--muted); background: var(--surface); border: 1px dashed var(--stroke); border-radius: var(--radius);">
+                        Aktuell sind keine Marktplätze im System konfiguriert.
+                    </div>
                 <?php endif; ?>
             </div>
         </section>
 
-        <!-- ADMIN (Technisch versierte) -->
+        <!-- ADMIN -->
         <section class="section">
             <h2 class="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -321,7 +374,7 @@ require_once APP_ROOT . '/config/marketplaces.php';
                         </div>
                         <div>
                             <div class="card-title">Log Viewer</div>
-                            <div class="card-desc">Systemprotokolle für Debugging</div>
+                            <div class="card-desc">Systemprotokolle für technisches Debugging und Fehlersuche.</div>
                         </div>
                     </div>
                 </a>
@@ -335,7 +388,7 @@ require_once APP_ROOT . '/config/marketplaces.php';
                         </div>
                         <div>
                             <div class="card-title">Error Report</div>
-                            <div class="card-desc">Berichte zu ManoMano Fehlern</div>
+                            <div class="card-desc">Ausführliche Berichte zu spezifischen API-Fehlern (z.B. ManoMano).</div>
                         </div>
                     </div>
                 </a>
@@ -349,7 +402,7 @@ require_once APP_ROOT . '/config/marketplaces.php';
                         </div>
                         <div>
                             <div class="card-title">Produktdatenbank</div>
-                            <div class="card-desc">Erweiterte Calc Ansicht</div>
+                            <div class="card-desc">Erweiterte technische Datenbankansicht (Calc).</div>
                         </div>
                     </div>
                 </a>
@@ -359,4 +412,3 @@ require_once APP_ROOT . '/config/marketplaces.php';
     </div>
 </body>
 </html>
-
