@@ -24,11 +24,12 @@ $month_pkgs = $pdo->query($sql_month)->fetchAll(PDO::FETCH_ASSOC);
 $month_sum = array_sum(array_column($month_pkgs, 'Pakete'));
 
 // Base Order Statement
+// Base Order Statement
 $orderStmt = $pdo->prepare("
-    SELECT bp.einzelpreis, bw.titel
+    SELECT bp.einzelpreis, bp.steuer, bw.titel
     FROM bestellungen b
     JOIN (
-        SELECT bestellungsid, einzelpreis
+        SELECT bestellungsid, einzelpreis, steuer
         FROM bestellungen_positionen 
         WHERE produktid = (
             SELECT produktid 
@@ -71,7 +72,16 @@ function fetchTableData($pdo, $sql, $orderStmt) {
 
         $orders = [];
         foreach ($result as $item) {
-            $price = number_format((float)$item["einzelpreis"]*1.19, 2, ',', '') . "€ <span style='font-size:0.85em; color:var(--muted);'>(" . $item["titel"] . ")</span>";
+            // Steuer auslesen (mit Fallback auf 19%, falls leer)
+            $steuer = (isset($item["steuer"]) && is_numeric($item["steuer"])) ? (float)$item["steuer"] : 19.0;
+            
+            // Multiplikator berechnen (z.B. 19 -> 1.19, 7 -> 1.07, 0 -> 1.00)
+            $steuerMultiplikator = 1 + ($steuer / 100);
+            
+            // Bruttopreis berechnen
+            $bruttoPreis = (float)$item["einzelpreis"] * $steuerMultiplikator;
+            
+            $price = number_format($bruttoPreis, 2, ',', '') . "€ <span style='font-size:0.85em; color:var(--muted);'>(" . $item["titel"] . ")</span>";
             $orders[] = str_replace(array_keys($replacements), array_values($replacements), $price);
         }
         while (count($orders) < 3) $orders[] = "";
