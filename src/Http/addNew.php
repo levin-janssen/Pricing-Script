@@ -506,6 +506,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $message_type !== 'error') {
     </style>
 </head>
 <body>
+    <?php include __DIR__ . '/global_header.php'; ?>
 
     <script> const currencySymbolJS = '<?= $currency_symbol ?>'; </script>
     <div class="page">

@@ -493,6 +493,7 @@ foreach ($asins_for_country as $item) {
     </style>
 </head>
 <body>
+    <?php include __DIR__ . '/global_header.php'; ?>
 
     <div class="page">
         

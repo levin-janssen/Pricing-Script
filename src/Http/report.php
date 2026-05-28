@@ -138,6 +138,7 @@ th.sort-desc::after{content:' ▼';font-size:11px;color:var(--muted)}
 </style>
 </head>
 <body>
+    <?php include __DIR__ . '/global_header.php'; ?>
 <div class="container">
  <h1>📊 Produktdaten-Bericht</h1>
 

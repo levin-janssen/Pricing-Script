@@ -540,6 +540,7 @@ function formatValue($value): string
     </style>
 </head>
 <body>
+    <?php include __DIR__ . '/global_header.php'; ?>
     <div class="page">
         <div class="topbar">
             <a class="back" href="bestandsabweichungen.php">&larr; Start</a>

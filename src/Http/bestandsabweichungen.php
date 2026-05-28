@@ -661,6 +661,7 @@ function formatValue($value): string
     </style>
 </head>
 <body>
+    <?php include __DIR__ . '/global_header.php'; ?>
     <div class="page">
         <div class="hero">
             <div class="hero-text">

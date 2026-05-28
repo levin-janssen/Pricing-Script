@@ -129,6 +129,7 @@ $data = json_decode($response);
 </head>
 
 <body>
+    <?php include __DIR__ . '/global_header.php'; ?>
   <div class="container">
     <h1>SKU Error Report - ManoMano</h1>
     <table>

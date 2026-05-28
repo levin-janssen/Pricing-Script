@@ -227,6 +227,7 @@ require_once APP_ROOT . '/config/marketplaces.php';
     </style>
 </head>
 <body>
+    <?php include __DIR__ . '/global_header.php'; ?>
     <div class="dashboard-container">
         
         <header class="hero">
@@ -328,7 +329,7 @@ require_once APP_ROOT . '/config/marketplaces.php';
             <div class="grid">
                 <?php if(!empty($marketplaces)): ?>
                     <?php foreach ($marketplaces as $m): ?>
-                        <a href="<?php echo htmlspecialchars($m['url']); ?>" class="card">
+                        <a href="<?php echo htmlspecialchars($m['url']); ?>" class="card" target="_blank">
                             <div class="card-header">
                                 <div class="icon-wrapper" style="background: transparent;">
                                     <?php if(!empty($m['img'])): ?>

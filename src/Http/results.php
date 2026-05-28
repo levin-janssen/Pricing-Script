@@ -664,6 +664,7 @@ if (empty($db_error) && !empty($selectedAsin)) {
     </style>
 </head>
 <body>
+    <?php include __DIR__ . '/global_header.php'; ?>
     <script> const currencySymbolJS = '<?= $currency_symbol ?>'; </script>
     <div class="page">
         
