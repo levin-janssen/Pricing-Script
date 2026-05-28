@@ -332,6 +332,17 @@ function processAsin($asin, $concurrentData) {
     $niedrigsterPreis = filter_var($niedrigsterPreis_raw, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
     $eigenerPreis = filter_var($eigenerPreis_raw, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
 
+    if ($eigenerPreis === null) {
+        Logger::warning("Eigener Preis konnte nicht festgestellt werden. Berechnung abgebrochen.", ['asin' => $asin, 'sku' => $sku]);
+        return null;
+    }
+
+    // NEW: Prevent DB crash and price-tanking when you are the only seller
+    if ($niedrigsterPreis === null) {
+        Logger::info("Kein Mitbewerber (Niedrigster Preis = null). Nutze eigenen Preis für Berechnung.", ['asin' => $asin, 'sku' => $sku]);
+        $niedrigsterPreis = $eigenerPreis;
+    }
+
     // LOG: Aktuelle Marktsituation von Amazon
     Logger::info("Marktdaten empfangen", [
         'asin' => $asin, 
@@ -475,21 +486,17 @@ function processAsin($asin, $concurrentData) {
 function logCurrentState($dbConnection, $produktid, $eigenerPreis, $niedrigsterPreis, $buyboxPreis, $counter, $isWinner) {
     global $dbName;
     try {
-        $isWinnerString = null;
-        if($isWinner){
-            $isWinnerString = "Ja";
-        } else{
-            $isWinnerString = "Nein";
-        }
+        $isWinnerString = $isWinner ? "Ja" : "Nein";
+        
         $stmt = $dbConnection->prepare(
             "INSERT INTO `$dbName` (`produktid`, `eigenerPreis`, `niedrigsterPreis`, `buyboxPreis`, `datum`, `action`, `counter` , `isWinner` )
              VALUES (:produktid, :eigenerPreis, :niedrigsterPreis, :buyboxPreis, current_timestamp(), :action, :counter, :isWinner )"
         );
         $stmt->execute([
             ':produktid' => $produktid,
-            ':eigenerPreis' => $eigenerPreis,
-            ':niedrigsterPreis' => $niedrigsterPreis, 
-            ':buyboxPreis' => $buyboxPreis, 
+            ':eigenerPreis' => $eigenerPreis ?? 0.00,
+            ':niedrigsterPreis' => $niedrigsterPreis ?? 0.00, 
+            ':buyboxPreis' => $buyboxPreis ?? 0.00, 
             ':action' => "document", 
             ":counter" => $counter,
             ":isWinner" => $isWinnerString
@@ -498,18 +505,12 @@ function logCurrentState($dbConnection, $produktid, $eigenerPreis, $niedrigsterP
         echo "DB Log Error (document): " . $e->getMessage() . "<br>\r\n";
     }
 }
-
 function logPlannedAction($dbConnection, $produktid, $neuerPreis, $niedrigsterPreisContext, $buyboxPreisContext, $action, $counter, $isWinner) {
     global $dbName;
     try {
         date_default_timezone_set('Europe/Berlin');
         $futureTimestamp = date('Y-m-d H:i:s', time() + 10);
-        $isWinnerString = null;
-        if($isWinner){
-            $isWinnerString = "Ja";
-        } else{
-            $isWinnerString = "Nein";
-        }
+        $isWinnerString = $isWinner ? "Ja" : "Nein";
 
         $stmt = $dbConnection->prepare(
             "INSERT INTO `$dbName` (`produktid`, `eigenerPreis`, `niedrigsterPreis`, `buyboxPreis`, `datum`, `action`, `counter` , `isWinner` )
@@ -517,9 +518,9 @@ function logPlannedAction($dbConnection, $produktid, $neuerPreis, $niedrigsterPr
         );
         $stmt->execute([
             ':produktid' => $produktid,
-            ':eigenerPreis' => $neuerPreis,
-            ':niedrigsterPreis' => $niedrigsterPreisContext, 
-            ':buyboxPreis' => $buyboxPreisContext, 
+            ':eigenerPreis' => $neuerPreis ?? 0.00,
+            ':niedrigsterPreis' => $niedrigsterPreisContext ?? 0.00, 
+            ':buyboxPreis' => $buyboxPreisContext ?? 0.00, 
             ':datum' => $futureTimestamp, 
             ':action' => $action ,
             ":counter" => $counter,
