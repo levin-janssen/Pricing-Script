@@ -98,8 +98,14 @@ foreach ($marketplaces as $key => $value) {
         } else {
           // --- FBM-ARTIKEL: BESTANDSAKTUALISIERUNG ---
             
-            // Alten Amazon-Bestand abfragen (nur für den Abgleich)
+            // Alten Amazon-Bestand abfragen (nur für den Abgleich) mit Zeitmessung
+            $qtyStartTime = microtime(true);
             $amazonQuantity = getQuantityBySku($sku, "A6F5BRV91OMPP", $marketplaceId);
+            Logger::performance("API: getQuantityBySku", microtime(true) - $qtyStartTime, ['asin' => $asin, 'sku' => $sku]);
+            
+            if ($amazonQuantity === null) {
+                Logger::error("Fehler beim Abrufen des Amazon-Bestands (getQuantityBySku)", ['asin' => $asin, 'sku' => $sku]);
+            }
             
             // Echten und Rohen Bestand aus dem vorab geladenen Cache (Array) abfragen
             $tricomaQuantity = $tricomaBulkStock[$asin]['real'] ?? 0;
@@ -136,7 +142,12 @@ foreach ($marketplaces as $key => $value) {
             continue; // Bricht den restlichen Durchlauf ab, da kein Preis da ist
         } 
         
-        if(updateAmazonProductPrice( $sku, $preis,  "PRODUCT", $marketplaceId, $currencyCode)){
+        // Preis-Update API-Call mit Zeitmessung
+        $updatePriceStartTime = microtime(true);
+        $updateSuccess = updateAmazonProductPrice($sku, $preis, "PRODUCT", $marketplaceId, $currencyCode);
+        Logger::performance("API: updateAmazonProductPrice", microtime(true) - $updatePriceStartTime, ['asin' => $asin, 'sku' => $sku, 'preis' => $preis]);
+
+        if($updateSuccess){
             echo "Preis für SKU $sku wurde erfolgreich auf $preis gesetzt.<br>\r\n";
             Logger::info("Preis erfolgreich gesetzt", ['sku' => $sku, 'asin' => $asin, 'preis' => $preis, 'marketplaceId' => $marketplaceId]);
             $AmazonBuilder->addBusinessPrice($sku,  "EUR", $marketplaceId, ((float)($preis-0.01)));
@@ -148,7 +159,7 @@ foreach ($marketplaces as $key => $value) {
             }
         } else{
             echo "Fehler beim Setzen des Preises für SKU $sku.<br>\r\n";
-            Logger::error("Fehler beim Setzen des Preises", ['sku' => $sku, 'preis' => $preis, 'marketplaceId' => $marketplaceId]);
+            Logger::error("Fehler beim Setzen des Preises (updateAmazonProductPrice)", ['sku' => $sku, 'preis' => $preis, 'marketplaceId' => $marketplaceId]);
         }
         
         // END ASIN-TIMER
@@ -250,7 +261,7 @@ function processAsin($asin) {
     $apiStartTime = microtime(true);
     $data = callItemsAPI($asin,  $marketplaceId);
     if (!$data) {
-        Logger::error("API Data Request fehlgeschlagen", ['asin' => $asin, 'sku' => $sku]);
+        Logger::error("API Data Request fehlgeschlagen (callItemsAPI)", ['asin' => $asin, 'sku' => $sku]);
         return null;
     }
     Logger::performance("API: callItemsAPI", microtime(true) - $apiStartTime, ['asin' => $asin, 'sku' => $sku]);
@@ -335,8 +346,12 @@ function processAsin($asin) {
             } else {
                 $neuerPreis = $eigenerPreis;
                 try{
+                    $featuredPriceStartTime = microtime(true);
                     $neuerPreis = getFeaturedOfferExpectedPriceBySKU($sku, $marketplaceId) ?? $eigenerPreis;
-                } catch (Exception $e) {}
+                    Logger::performance("API: getFeaturedOfferExpectedPriceBySKU", microtime(true) - $featuredPriceStartTime, ['asin' => $asin, 'sku' => $sku]);
+                } catch (Exception $e) {
+                    Logger::error("Fehler bei getFeaturedOfferExpectedPriceBySKU", ['asin' => $asin, 'sku' => $sku, 'error' => $e->getMessage()]);
+                }
                 if($neuerPreis != $eigenerPreis){
                     $counter = 4;
                 }
