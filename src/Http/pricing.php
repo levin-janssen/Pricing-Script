@@ -102,12 +102,29 @@ foreach ($marketplaces as $key => $value) {
             
             // Extract Quantity from the concurrent response
             $amazonQuantity = null;
-            if (isset($concurrentData['quantity']['data']['fulfillmentAvailability'][0]['quantity'])) {
-                $amazonQuantity = $concurrentData['quantity']['data']['fulfillmentAvailability'][0]['quantity'];
+            $quantityResponse = $concurrentData['quantity']['data'] ?? null;
+            $quantityHttpCode = $concurrentData['quantity']['http_code'] ?? 0;
+
+            if (isset($quantityResponse['fulfillmentAvailability'][0]['quantity'])) {
+                $amazonQuantity = $quantityResponse['fulfillmentAvailability'][0]['quantity'];
             }
             
             if ($amazonQuantity === null) {
-                Logger::error("Fehler beim Abrufen des Amazon-Bestands (Concurrent Quantity)", ['asin' => $asin, 'sku' => $sku]);
+                // Determine the exact cause for better debugging
+                if ($quantityHttpCode === 404) {
+                     Logger::warning("SKU auf Amazon nicht gefunden (HTTP 404).", ['asin' => $asin, 'sku' => $sku]);
+                } elseif (isset($quantityResponse['errors'])) {
+                     $errMsg = $quantityResponse['errors'][0]['message'] ?? 'Unbekannter API Fehler';
+                     Logger::error("API Fehler beim Abrufen des Bestands: " . $errMsg, ['asin' => $asin, 'sku' => $sku]);
+                } else {
+                     // Catch-all for other weird responses (logs the exact payload)
+                     Logger::error("Fehler beim Abrufen des Amazon-Bestands (Concurrent Quantity). Unerwartete Antwort.", [
+                         'asin' => $asin, 
+                         'sku' => $sku, 
+                         'http_code' => $quantityHttpCode,
+                         'response' => $quantityResponse
+                     ]);
+                }
             }
             
             // Echten und Rohen Bestand aus dem vorab geladenen Cache (Array) abfragen
