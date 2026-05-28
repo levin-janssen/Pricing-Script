@@ -249,6 +249,20 @@ require_once APP_ROOT . '/config/marketplaces.php';
                         </div>
                     </div>
                 </a>
+
+                <a href="pakete_infos.php" class="card">
+                    <div class="card-header">
+                        <div class="icon-wrapper">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="card-title">Paket- und Versandinfos</div>
+                            <div class="card-desc">Offene Lieferungen und Versandstatistik einsehen</div>
+                        </div>
+                    </div>
+                </a>
             </div>
         </section>
 
