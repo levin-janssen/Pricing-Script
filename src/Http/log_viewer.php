@@ -80,12 +80,14 @@ $mergedEntries = [];
 $lastAsinEntryIndex = []; 
 $runTotalTimes = [];      
 $recentRuns = []; // Speichert die Daten fuer die Schnellzugriffs-Buttons
+$runPerfStats = []; // Summe/Count der Performance-Logs pro Run und Prozess
 
 foreach ($rawEntries as $entry) {
     $runId = $entry['runId'];
     $asin = $entry['asin'];
     $isPerf = ($entry['level'] === 'PERF');
     $duration = $entry['duration'];
+    $processName = $entry['message'];
 
     // 1. Run ID Statistik fuer die Top-Leiste sammeln
     if ($runId !== '') {
@@ -100,6 +102,15 @@ foreach ($rawEntries as $entry) {
     // Globale Skriptlaufzeit abgreifen
     if ($isPerf && $runId !== '' && stripos($entry['message'], 'Total Script Execution Time') !== false && $duration !== null) {
         $runTotalTimes[$runId] = $duration;
+    }
+
+    // Durchschnittswerte je Prozess fuer den Run sammeln
+    if ($isPerf && $runId !== '' && $duration !== null && $processName !== '' && stripos($processName, 'Total Script Execution Time') === false) {
+        if (!isset($runPerfStats[$runId][$processName])) {
+            $runPerfStats[$runId][$processName] = ['sum' => 0.0, 'count' => 0];
+        }
+        $runPerfStats[$runId][$processName]['sum'] += (float)$duration;
+        $runPerfStats[$runId][$processName]['count'] += 1;
     }
 
     // Wenn es ein Performance-Log mit einer ASIN ist -> An den letzten App-Log anhaengen
@@ -202,6 +213,23 @@ if ($filterRunId !== '') $activeFilters[] = 'Run ID: ' . $filterRunId;
 $filteredRuntime = null;
 if ($filterRunId !== '' && isset($runTotalTimes[$filterRunId])) {
     $filteredRuntime = $runTotalTimes[$filterRunId];
+}
+
+$runPerfAverages = [];
+if ($filterRunId !== '' && isset($runPerfStats[$filterRunId])) {
+    foreach ($runPerfStats[$filterRunId] as $process => $stats) {
+        if ($stats['count'] > 0) {
+            $runPerfAverages[] = [
+                'process' => $process,
+                'avg' => $stats['sum'] / $stats['count'],
+                'count' => $stats['count']
+            ];
+        }
+    }
+    usort($runPerfAverages, static function (array $left, array $right): int {
+        $cmp = ($right['avg'] <=> $left['avg']);
+        return $cmp !== 0 ? $cmp : strcmp($left['process'], $right['process']);
+    });
 }
 
 // ------------------------------------------------------------------
@@ -472,7 +500,7 @@ function h(string $value): string
         }
         /* ------------------------------- */
 
-        .hero-stats { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+        .hero-stats { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
 
         .stat-card {
             background: var(--surface);
@@ -505,6 +533,51 @@ function h(string $value): string
             font-weight: 700;
             margin-top: 4px;
             font-variant-numeric: tabular-nums;
+        }
+
+        .stat-card.perf-summary {
+            flex: 1 1 100%;
+            padding: 12px 14px;
+        }
+
+        .perf-flow {
+            margin-top: 10px;
+            column-gap: 20px;
+            columns: 3 180px;
+            padding: 8px 10px;
+            background: var(--surface-soft);
+            border-radius: var(--radius-sm);
+            border: 1px dashed var(--stroke);
+        }
+
+        .perf-row {
+            break-inside: avoid;
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 2px 0;
+            font-size: 0.82rem;
+        }
+
+        .perf-name {
+            font-weight: 600;
+            color: var(--muted);
+            line-height: 1.25;
+            min-width: 0;
+            word-break: break-word;
+        }
+
+        .perf-value {
+            font-weight: 700;
+            color: var(--ink);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        .perf-empty {
+            margin-top: 8px;
+            font-size: 0.9rem;
+            color: var(--muted);
         }
 
         .panel {
@@ -866,6 +939,7 @@ function h(string $value): string
             .stat-card { flex: 1; }
             .filter-actions { flex-direction: column; align-items: stretch; }
             button, .ghost { width: 100%; }
+            .perf-flow { columns: 1 240px; }
         }
     </style>
 </head>
@@ -907,6 +981,23 @@ function h(string $value): string
                     <div class="stat-card highlight">
                         <div class="stat-label">Gesamtlaufzeit Run</div>
                         <div class="stat-value"><?= h(formatDuration($filteredRuntime)) ?></div>
+                    </div>
+                <?php endif; ?>
+                <?php if ($filterRunId !== ''): ?>
+                    <div class="stat-card perf-summary">
+                        <div class="stat-label">Ø Prozesszeiten</div>
+                        <?php if (!empty($runPerfAverages)): ?>
+                            <div class="perf-flow">
+                                <?php foreach ($runPerfAverages as $perf): ?>
+                                    <div class="perf-row" title="Messungen: <?= (int)$perf['count'] ?>">
+                                        <span class="perf-name"><?= h($perf['process']) ?></span>
+                                        <span class="perf-value"><?= h(formatDuration($perf['avg'])) ?></span>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php else: ?>
+                            <div class="perf-empty">Keine Performance-Logs fuer diesen Run.</div>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
                 <div class="stat-card">
