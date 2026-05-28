@@ -93,9 +93,21 @@ foreach ($marketplaces as $key => $value) {
         $concurrentData = fetchAllAsinDataConcurrent($asin, $sku, $marketplaceId);
         Logger::performance("API: Concurrent Data Fetch", microtime(true) - $apiStartTime, ['asin' => $asin, 'sku' => $sku]);
 
-        // 1. FBA-Prüfung für das Bestandsupdate
+        // 1. Dynamische FBA-Prüfung
+        // Prüft zuerst den Suffix, als Fallback prüfen wir, was Amazon uns als Channel mitteilt
+        $isFBA_by_name = (substr($sku, -strlen('_FBA')) === '_FBA');
+        
+        $channelCode = $concurrentData['quantity']['data']['fulfillmentAvailability'][0]['fulfillmentChannelCode'] ?? 'DEFAULT';
+        $isFBA_by_api = (strpos($channelCode, 'AMAZON') !== false); // z.B. 'AMAZON_EU'
+
+        $isFBA = ($isFBA_by_name || $isFBA_by_api);
+
         if ($isFBA) {
-            Logger::info("FBA-Artikel erkannt: Bestand wird nicht übermittelt, nur Preisupdate.", ['asin' => $asin, 'sku' => $sku]);
+            Logger::info("FBA-Artikel erkannt: Bestand wird nicht übermittelt, nur Preisupdate.", [
+                'asin' => $asin, 
+                'sku' => $sku, 
+                'channel' => $channelCode
+            ]);
             echo "FBA-Artikel: Überspringe Bestandsupdate für ASIN $asin.<br>\r\n";
         } else {
             // --- FBM-ARTIKEL: BESTANDSAKTUALISIERUNG ---
@@ -117,7 +129,6 @@ foreach ($marketplaces as $key => $value) {
                      $errMsg = $quantityResponse['errors'][0]['message'] ?? 'Unbekannter API Fehler';
                      Logger::error("API Fehler beim Abrufen des Bestands: " . $errMsg, ['asin' => $asin, 'sku' => $sku]);
                 } else {
-                     // Catch-all for other weird responses (logs the exact payload)
                      Logger::error("Fehler beim Abrufen des Amazon-Bestands (Concurrent Quantity). Unerwartete Antwort.", [
                          'asin' => $asin, 
                          'sku' => $sku, 
