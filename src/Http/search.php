@@ -302,6 +302,21 @@ if (!isset($marketplaces[$current_marketplace_code])) {
             background-color: #f1f3f5;
             color: #495057;
             border: 1px solid #e9ecef;
+            transition: all 0.2s;
+        }
+        
+        .price-badge.limit-reached-min {
+            background-color: #fff3cd;
+            color: #856404;
+            border-color: #ffeeba;
+            box-shadow: 0 0 0 2px rgba(255,193,7,0.2) inset;
+        }
+
+        .price-badge.limit-reached-max {
+            background-color: #d4edda;
+            color: #155724;
+            border-color: #c3e6cb;
+            box-shadow: 0 0 0 2px rgba(40,167,69,0.2) inset;
         }
 
         .stock-badge {
@@ -404,6 +419,12 @@ if (!isset($marketplaces[$current_marketplace_code])) {
                         <option value="lowstock">Wenig Bestand (1-10)</option>
                         <option value="outstock">Ausverkauft (0)</option>
                     </select>
+
+                    <select id="filterLimit" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; outline: none; background: #fff; font-size: 0.95rem; cursor: pointer; color: #495057;">
+                        <option value="all">Preis-Limits: Alle</option>
+                        <option value="min">An Min-Grenze</option>
+                        <option value="max">An Max-Grenze</option>
+                    </select>
                 </div>
                 
                 <div class="dashboard-actions">
@@ -454,6 +475,8 @@ if (!isset($marketplaces[$current_marketplace_code])) {
                                         elseif ($stock_val > 0) $stock_class = 'stock-low';
                                     }
                                     
+                                    $eigener_preis_float = null;
+
                                     if (isset($item['buybox_data'])) {
                                         $isWinner = strtolower(trim((string)$item['buybox_data']['isWinner']));
                                         if ($isWinner === 'ja' || $isWinner === '1' || $isWinner === 'true') {
@@ -464,10 +487,28 @@ if (!isset($marketplaces[$current_marketplace_code])) {
                                             $bb_class = 'bb-no';
                                         }
                                         
-                                        $eigener_preis_str = number_format((float)$item['buybox_data']['eigenerpreis'], 2, ',', '.') . ' ' . $currency;
+                                        $eigener_preis_float = (float)$item['buybox_data']['eigenerpreis'];
+                                        $eigener_preis_str = number_format($eigener_preis_float, 2, ',', '.') . ' ' . $currency;
                                     }
                                     
                                     $bb_price = isset($item['buybox_data']) && is_numeric($item['buybox_data']['buyboxPreis']) ? $item['buybox_data']['buyboxPreis'] : '';
+                                    
+                                    // Check if limits are reached
+                                    $min_class = '';
+                                    $max_class = '';
+                                    if ($eigener_preis_float !== null) {
+                                        $min_preis = (float)$item['min_preis'];
+                                        $max_preis = (float)$item['max_preis'];
+                                        $step_small = (float)$item['stepsize_small'];
+                                        
+                                        // "hängt an der Grenze +- stepsize"
+                                        if (abs($eigener_preis_float - $min_preis) <= $step_small + 0.005) {
+                                            $min_class = 'limit-reached-min';
+                                        }
+                                        if (abs($eigener_preis_float - $max_preis) <= $step_small + 0.005) {
+                                            $max_class = 'limit-reached-max';
+                                        }
+                                    }
                                 ?>
                                 <tr class="product-row"
                                     data-bb="<?= strtolower($bb_status) ?>"
@@ -475,6 +516,8 @@ if (!isset($marketplaces[$current_marketplace_code])) {
                                     data-min="<?= $item['min_preis'] ?>"
                                     data-max="<?= $item['max_preis'] ?>"
                                     data-bbprice="<?= $bb_price ?>"
+                                    data-at-min="<?= $min_class ? '1' : '0' ?>"
+                                    data-at-max="<?= $max_class ? '1' : '0' ?>"
                                 >
                                     <td><strong style="color: #495057; font-family: monospace; font-size: 1.05em;"><?= htmlspecialchars($item['ASIN']) ?></strong></td>
                                     <td><span style="color: #6c757d; font-size: 0.9em;"><?= htmlspecialchars($item['sku']) ?></span></td>
@@ -489,8 +532,8 @@ if (!isset($marketplaces[$current_marketplace_code])) {
                                     <td style="text-align: center;">
                                         <span class="bb-badge <?= $bb_class ?>"><?= $bb_status ?></span>
                                     </td>
-                                    <td><span class="price-badge"><?= htmlspecialchars(number_format((float)$item['min_preis'], 2, ',', '.')) ?> <?= $currency ?></span></td>
-                                    <td><span class="price-badge"><?= htmlspecialchars(number_format((float)$item['max_preis'], 2, ',', '.')) ?> <?= $currency ?></span></td>
+                                    <td><span class="price-badge <?= $min_class ?>" title="<?= $min_class ? 'Aktueller Preis liegt an der Min-Grenze!' : '' ?>"><?= htmlspecialchars(number_format((float)$item['min_preis'], 2, ',', '.')) ?> <?= $currency ?></span></td>
+                                    <td><span class="price-badge <?= $max_class ?>" title="<?= $max_class ? 'Aktueller Preis liegt an der Max-Grenze!' : '' ?>"><?= htmlspecialchars(number_format((float)$item['max_preis'], 2, ',', '.')) ?> <?= $currency ?></span></td>
                                     <td><span class="price-badge" style="background-color:#e3f2fd; border-color:#b6effb;"><?= $eigener_preis_str ?></span></td>
                                     <td style="text-align: right;">
                                         <a href="results.php?country=<?= urlencode($current_marketplace_code) ?>&asin=<?= urlencode($item['ASIN']) ?>" class="action-link">Bearbeiten / Details &rarr;</a>
@@ -513,12 +556,14 @@ if (!isset($marketplaces[$current_marketplace_code])) {
         const searchInput = document.getElementById('tableSearchInput');
         const filterBuybox = document.getElementById('filterBuybox');
         const filterStock = document.getElementById('filterStock');
+        const filterLimit = document.getElementById('filterLimit');
         const rows = document.querySelectorAll('.product-row');
 
         function applyFilters() {
             const searchText = searchInput ? searchInput.value.toLowerCase() : '';
             const bbFilter = filterBuybox ? filterBuybox.value : 'all';
             const stockFilter = filterStock ? filterStock.value : 'all';
+            const limitFilter = filterLimit ? filterLimit.value : 'all';
 
             rows.forEach(row => {
                 let show = true;
@@ -570,6 +615,15 @@ if (!isset($marketplaces[$current_marketplace_code])) {
                     if (stockFilter === 'outstock' && stock > 0) show = false;
                 }
 
+                // 4. Limit filter
+                if (show && limitFilter !== 'all') {
+                    const atMin = row.getAttribute('data-at-min');
+                    const atMax = row.getAttribute('data-at-max');
+                    
+                    if (limitFilter === 'min' && atMin !== '1') show = false;
+                    if (limitFilter === 'max' && atMax !== '1') show = false;
+                }
+
                 row.style.display = show ? '' : 'none';
             });
         }
@@ -577,6 +631,7 @@ if (!isset($marketplaces[$current_marketplace_code])) {
         if (searchInput) searchInput.addEventListener('keyup', applyFilters);
         if (filterBuybox) filterBuybox.addEventListener('change', applyFilters);
         if (filterStock) filterStock.addEventListener('change', applyFilters);
+        if (filterLimit) filterLimit.addEventListener('change', applyFilters);
 
         // Sorting Logic
         const table = document.getElementById('productsTable');
