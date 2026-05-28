@@ -1330,4 +1330,97 @@ function getProductTitleAndImage(string $asin, string $marketplaceId = 'A1PA6795
     ];
 }
 
+function fetchAllAsinDataConcurrent($asin, $sku, $marketplaceId, $sellerId = "A6F5BRV91OMPP")
+{
+    $accessToken = getAccessToken();
+    if (!$accessToken) {
+        error_log("Failed to retrieve access token in fetchAllAsinDataConcurrent.");
+        return null;
+    }
+
+    $mh = curl_multi_init();
+    $handles = [];
+    $results = [];
+
+    $baseUrl = "https://sellingpartnerapi-eu.amazon.com";
+
+    // 1. Handle: Items API (BuyBox & Lowest Price)
+    $ch1 = curl_init("{$baseUrl}/products/pricing/v0/items/{$asin}/offers?MarketplaceId={$marketplaceId}&ItemCondition=New");
+    curl_setopt($ch1, CURLOPT_HTTPHEADER, ["x-amz-access-token: " . $accessToken]);
+    curl_setopt($ch1, CURLOPT_RETURNTRANSFER, true);
+    $handles['items_api'] = $ch1;
+
+    // 2. Handle: Own Price
+    $ch2 = curl_init("{$baseUrl}/products/pricing/v0/price?MarketplaceId={$marketplaceId}&Skus={$sku}&ItemType=Sku");
+    curl_setopt($ch2, CURLOPT_HTTPHEADER, ["x-amz-access-token: " . $accessToken]);
+    curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+    $handles['own_price'] = $ch2;
+
+    // 3. Handle: Featured Offer Expected Price
+    $jsonBody = json_encode([
+        'requests' => [[
+            'marketplaceId' => $marketplaceId,
+            'method' => "GET",
+            'sku' => $sku,
+            'uri' => "/products/pricing/2022-05-01/offer/featuredOfferExpectedPrice",
+            "body" => [],
+            "headers" => ["reprehenderit_c2" => "<string>", "ad2e0" => "<string>"]
+        ]]
+    ]);
+    $ch3 = curl_init("{$baseUrl}/batches/products/pricing/2022-05-01/offer/featuredOfferExpectedPrice");
+    curl_setopt($ch3, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch3, CURLOPT_POST, true);
+    curl_setopt($ch3, CURLOPT_POSTFIELDS, $jsonBody);
+    curl_setopt($ch3, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'Accept: application/json',
+        'x-amz-access-token: ' . $accessToken,
+        'Content-Length: ' . strlen($jsonBody)
+    ]);
+    $handles['featured_price'] = $ch3;
+
+    // 4. Handle: Quantity (Inventory)
+    $encodedSku = urlencode($sku);
+    $ch4 = curl_init("{$baseUrl}/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds={$marketplaceId}&includedData=fulfillmentAvailability");
+    curl_setopt($ch4, CURLOPT_HTTPHEADER, ["x-amz-access-token: " . $accessToken, "Accept: application/json"]);
+    curl_setopt($ch4, CURLOPT_RETURNTRANSFER, true);
+    $handles['quantity'] = $ch4;
+
+    // Add all handles to the multi-handler and set strict timeouts
+    foreach ($handles as $key => $ch) {
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15); // Allow max 15s for the slowest request
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_multi_add_handle($mh, $ch);
+    }
+
+    // Execute all requests concurrently
+    $running = null;
+    do {
+        $status = curl_multi_exec($mh, $running);
+        if ($running) {
+            // Wait a short time for more activity to avoid maxing out the CPU loop
+            curl_multi_select($mh, 0.1); 
+        }
+    } while ($running && $status == CURLM_OK);
+
+    // Collect and decode the results
+    foreach ($handles as $key => $ch) {
+        $response = curl_multi_getcontent($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        
+        $results[$key] = [
+            'http_code' => $httpCode,
+            'data' => json_decode($response, true),
+            'error' => curl_error($ch)
+        ];
+        
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+    }
+
+    curl_multi_close($mh);
+    return $results;
+}
+
 ?>

@@ -72,7 +72,7 @@ foreach ($marketplaces as $key => $value) {
 
     // --- NEU: Bulk-Preload für Tricoma Bestände ---
     $preloadStartTime = microtime(true);
-    $asinArray = array_column($asins, 'ASIN'); // Extrahiert eine flache Liste aller ASINs
+    $asinArray = array_column($asins, 'ASIN'); 
     $tricomaBulkStock = preloadTricomaStocks($asinArray);
     Logger::performance("DB: Tricoma Bulk Stock Preload", microtime(true) - $preloadStartTime, ['count' => count($asinArray)]);
     // ----------------------------------------------
@@ -86,25 +86,28 @@ foreach ($marketplaces as $key => $value) {
         $result = $statement->fetch(PDO::FETCH_ASSOC);
         $sku = $result["sku"];
         
-        // 1. Preisberechnung (wird für FBA und FBM ausgeführt)
-        $preis = processAsin($asin);
-
-        // 2. FBA-Prüfung für das Bestandsupdate
         $isFBA = (substr($sku, -strlen('_FBA')) === '_FBA'); // Prüft, ob die SKU mit "_FBA" endet
 
+        // --- NEW: FETCH ALL API DATA CONCURRENTLY ---
+        $apiStartTime = microtime(true);
+        $concurrentData = fetchAllAsinDataConcurrent($asin, $sku, $marketplaceId);
+        Logger::performance("API: Concurrent Data Fetch", microtime(true) - $apiStartTime, ['asin' => $asin, 'sku' => $sku]);
+
+        // 1. FBA-Prüfung für das Bestandsupdate
         if ($isFBA) {
             Logger::info("FBA-Artikel erkannt: Bestand wird nicht übermittelt, nur Preisupdate.", ['asin' => $asin, 'sku' => $sku]);
             echo "FBA-Artikel: Überspringe Bestandsupdate für ASIN $asin.<br>\r\n";
         } else {
-          // --- FBM-ARTIKEL: BESTANDSAKTUALISIERUNG ---
+            // --- FBM-ARTIKEL: BESTANDSAKTUALISIERUNG ---
             
-            // Alten Amazon-Bestand abfragen (nur für den Abgleich) mit Zeitmessung
-            $qtyStartTime = microtime(true);
-            $amazonQuantity = getQuantityBySku($sku, "A6F5BRV91OMPP", $marketplaceId);
-            Logger::performance("API: getQuantityBySku", microtime(true) - $qtyStartTime, ['asin' => $asin, 'sku' => $sku]);
+            // Extract Quantity from the concurrent response
+            $amazonQuantity = null;
+            if (isset($concurrentData['quantity']['data']['fulfillmentAvailability'][0]['quantity'])) {
+                $amazonQuantity = $concurrentData['quantity']['data']['fulfillmentAvailability'][0]['quantity'];
+            }
             
             if ($amazonQuantity === null) {
-                Logger::error("Fehler beim Abrufen des Amazon-Bestands (getQuantityBySku)", ['asin' => $asin, 'sku' => $sku]);
+                Logger::error("Fehler beim Abrufen des Amazon-Bestands (Concurrent Quantity)", ['asin' => $asin, 'sku' => $sku]);
             }
             
             // Echten und Rohen Bestand aus dem vorab geladenen Cache (Array) abfragen
@@ -133,6 +136,9 @@ foreach ($marketplaces as $key => $value) {
                 Logger::warning("Achtung: Tricoma-Lagerbestand ist 0!", ['sku' => $sku, 'asin' => $asin]);
             }
         }
+
+        // 2. Preisberechnung (Passing concurrent data into the function)
+        $preis = processAsin($asin, $concurrentData);
 
         // 3. Preis-Aktualisierung (wird für FBA und FBM ausgeführt)
         if($preis == null){
@@ -206,9 +212,10 @@ Logger::performance("Feed Generation & Submission", microtime(true) - $feedStart
 // END GESAMT-TIMER
 Logger::performance("Total Script Execution Time", microtime(true) - $scriptStartTime);
 
+
 // --- FUNCTIONS REMAIN THE SAME BELOW THIS LINE ---
 
-function processAsin($asin) {
+function processAsin($asin, $concurrentData) {
     global $dbConnection;
     global $marketplaceId;
     global $dbName;
@@ -257,21 +264,21 @@ function processAsin($asin) {
     $previousState = $prevStateStmt->fetch(PDO::FETCH_ASSOC);
     $counter = $previousState['counter'] ?? 0;
 
-    // API Aufrufe (mit Performance-Tracking)
-    $apiStartTime = microtime(true);
-    $data = callItemsAPI($asin,  $marketplaceId);
+    // --- REPLACED SEQUENTIAL API CALLS WITH CONCURRENT DATA ---
+    $data = $concurrentData['items_api']['data'] ?? null;
+    
     if (!$data) {
-        Logger::error("API Data Request fehlgeschlagen (callItemsAPI)", ['asin' => $asin, 'sku' => $sku]);
+        Logger::error("API Data Request fehlgeschlagen (Items API aus Concurrent Fetch)", ['asin' => $asin, 'sku' => $sku]);
         return null;
     }
-    Logger::performance("API: callItemsAPI", microtime(true) - $apiStartTime, ['asin' => $asin, 'sku' => $sku]);
 
     $buyboxpreis_raw = getInfoByASIN($data, "buyboxpreis");
     $niedrigsterPreis_raw = getLowestPrice($data);
     
-    $ownPriceStartTime = microtime(true);
-    $eigenerPreis_raw = getOwnPriceBySku($sku,  $marketplaceId);
-    Logger::performance("API: getOwnPriceBySku", microtime(true) - $ownPriceStartTime, ['asin' => $asin, 'sku' => $sku]);
+    $eigenerPreis_raw = null;
+    if (!empty($concurrentData['own_price']['data']["payload"][0]["Product"]["Offers"][0]["BuyingPrice"]["ListingPrice"]["Amount"])) {
+        $eigenerPreis_raw = $concurrentData['own_price']['data']["payload"][0]["Product"]["Offers"][0]["BuyingPrice"]["ListingPrice"]["Amount"];
+    }
     
     $isWinner = IsBuyBoxWinner(getInfoByASIN($data, "offers"));
 
@@ -346,11 +353,12 @@ function processAsin($asin) {
             } else {
                 $neuerPreis = $eigenerPreis;
                 try{
-                    $featuredPriceStartTime = microtime(true);
-                    $neuerPreis = getFeaturedOfferExpectedPriceBySKU($sku, $marketplaceId) ?? $eigenerPreis;
-                    Logger::performance("API: getFeaturedOfferExpectedPriceBySKU", microtime(true) - $featuredPriceStartTime, ['asin' => $asin, 'sku' => $sku]);
+                    // Verwende den Concurrent Fetch für den Featured Price
+                    if (isset($concurrentData['featured_price']['data']['responses'][0]['body']['featuredOfferExpectedPriceResults'][0]['featuredOfferExpectedPrice']['listingPrice']['amount'])) {
+                        $neuerPreis = (float) $concurrentData['featured_price']['data']['responses'][0]['body']['featuredOfferExpectedPriceResults'][0]['featuredOfferExpectedPrice']['listingPrice']['amount'];
+                    }
                 } catch (Exception $e) {
-                    Logger::error("Fehler bei getFeaturedOfferExpectedPriceBySKU", ['asin' => $asin, 'sku' => $sku, 'error' => $e->getMessage()]);
+                    Logger::error("Fehler bei concurrent featured price extraction", ['asin' => $asin, 'sku' => $sku, 'error' => $e->getMessage()]);
                 }
                 if($neuerPreis != $eigenerPreis){
                     $counter = 4;
@@ -388,7 +396,7 @@ function processAsin($asin) {
     }
 
     if ($neuerPreis !== null) {
-        $kalkulierterPreis = $neuerPreis; // Preis vor Min/Max Anpassung merken
+        $kalkulierterPreis = $neuerPreis; 
         
         $neuerPreis = min($neuerPreis, $max_preis);
         $neuerPreis = max($min_preis, $neuerPreis);
@@ -477,15 +485,9 @@ function logPlannedAction($dbConnection, $produktid, $neuerPreis, $niedrigsterPr
     }
 }
 
-/**
- * Lädt den Rohbestand und den echten Bestand (abzüglich offener Bestellungen)
- * für ein Array von ASINs in genau ZWEI SQL-Queries.
- */
 function preloadTricomaStocks(array $asinList): array {
-    // 1. Frische Verbindung aufbauen, um Timeouts zu verhindern!
     $dbConnectionTric = new PDO('mysql:dbname=***REMOVED***;host=***REMOVED***;', '***REMOVED***', '***REMOVED***');
     $dbConnectionTric->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
-    // Auf Exception setzen, damit wir echte Fehler statt stille Warnungen bekommen
     $dbConnectionTric->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); 
     
     $result = [];
@@ -494,15 +496,12 @@ function preloadTricomaStocks(array $asinList): array {
         return $result;
     }
     
-    // 1. Initialisiere alle ASINs standardmäßig mit 0
     foreach ($asinList as $asin) {
         $result[$asin] = ['pure' => 0, 'real' => 0];
     }
     
-    // Erstelle PDO Platzhalter (z.B. "?, ?, ?") für das IN() Statement
     $placeholders = implode(',', array_fill(0, count($asinList), '?'));
     
-    // 2. ROHBESTAND für alle ASINs auf einmal abfragen
     $stmtPure = $dbConnectionTric->prepare("
         SELECT pfw.wert1 AS asin, SUM(l.menge) AS total_quantity
         FROM produkte_felder_werte pfw
@@ -515,10 +514,9 @@ function preloadTricomaStocks(array $asinList): array {
         $asin = $row['asin'];
         $menge = (int)$row['total_quantity'];
         $result[$asin]['pure'] = $menge;
-        $result[$asin]['real'] = $menge; // Wird im nächsten Schritt ggf. reduziert
+        $result[$asin]['real'] = $menge;
     }
     
-    // 3. OFFENE LIEFERUNGEN für alle ASINs auf einmal abfragen
     $stmtOpen = $dbConnectionTric->prepare("
         SELECT pfw.wert1 AS asin, SUM(lp.anzahl) AS open_quantity
         FROM lieferungen_positionen lp
@@ -542,5 +540,4 @@ function preloadTricomaStocks(array $asinList): array {
     
     return $result;
 }
-
 ?>
