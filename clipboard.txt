@@ -1,25 +1,47 @@
-SELECT 
-    pfw.wert1 AS asin,
-    SUM(l.menge) AS total_quantity_in_warehouse
-FROM produkte_felder_werte pfw
-INNER JOIN lager l 
-    ON pfw.produktid = l.vk_ID-- or l.vk_ID / l.vk_ID2 depending on which stores the product id
-WHERE pfw.feldid = 57 
-  AND pfw.wert1 IN (
-    'B0000DEZ3C', 'B001B4VFCQ', 'B001BAYCQQ', 'B001BAZX14', 'B001J4XU62', 'B0027U8UP8', 'B002YUNK4C', 'B003WJRCWU',
-    'B0053YBFCK', 'B0054DWVWS', 'B0054DX2VW', 'B00581TXNG', 'B00581TZYS', 'B0058OGG88', 'B005EBBMNO', 'B005ER77CS',
-    'B005JR6WQ0', 'B005Q737SO', 'B005YX9QM6', 'B0079JCVMU', 'B007C2J5PK', 'B007CXOE1E', 'B007QJL16A', 'B007QJNHSU',
-    'B007TJKIXO', 'B007TJZZP0', 'B007TJZZQE', 'B007TK08L0', 'B008D2DCMU', 'B0093JR11K', 'B00941AJZC', 'B0096PDC3M',
-    'B0097DYZHK', 'B009B6HC0A', 'B009B6HL0Q', 'B009G1D5FG', 'B00A7V4V7U', 'B00A7V6GAU', 'B00BD0Z7QI', 'B00BTG98CA',
-    'B00BVOAOCI', 'B00CZ74WG4', 'B00D79FNY4', 'B00D79H6QM', 'B00D7BLNSC', 'B00DFL2DHE', 'B00ESEQH42', 'B00F21WLLI',
-    'B00JC4W3N2', 'B00KBQMTUC', 'B00LX74NGQ', 'B00LY4IVNE', 'B00NU1AFUQ', 'B00QIXYWZM', 'B00SJ6OR88', 'B00U65S5BU',
-    'B017XDCS38', 'B01BBV8LMK', 'B01BDS7P3M', 'B01CTKQX2C', 'B01M9B2HPT', 'B01MUUSRNM', 'B01MV06XTQ', 'B01NC31THI',
-    'B06XWWB61X', 'B06XXB8Z17', 'B06XZZ84JC', 'B076X4BZ8G', 'B079QF54JP', 'B07DX7VZJS', 'B07F42NL2Q', 'B07JDTMWLL',
-    'B07JG1M56N', 'B07JN6CGD3', 'B07NWLP53C', 'B07PMNG6TF', 'B07PMNZQK6', 'B07PT4HM4N', 'B07SHHGM2N', 'B07TT6VC7F',
-    'B07TV572BR', 'B07TW6LMKY', 'B07YST254M', 'B081HSKLJN', 'B08259ZW2C', 'B0825BV586', 'B0845QBJ62', 'B084TFYVL6',
-    'B08CGR5QNT', 'B08FRNGHYC', 'B08H2CL56B', 'B08LHC5L7M', 'B08LHCW5JG', 'B08LHF12B6', 'B08NK879ZD', 'B09418F1GS',
-    'B0978H83D7', 'B097C2SMV4', 'B09TMVXCW8', 'B09WJ4XDD4', 'B0B34MD9SP', 'B0B61VLJT8', 'B0BRKTG3SK', 'B0BXWC1DJT',
-    'B0BXWDTR5V', 'B0BXWF39W5', 'B0BXWGWRB2', 'B0C662RGKK', 'B0CB16HXM3', 'B0CB17JJKH', 'B0CB1917LT', 'B0CFQSJVDF',
-    'B0CV5T3Q1R', 'B0CZ9C8YXZ', 'B0DFHJ72X2', 'B0DHSJ7TCP', 'B0FV2YZ2ZQ'
-  )
-GROUP BY pfw.wert1;
+SELECT kfw.wert1 AS land, t1.kundennummer, t1.produktid
+FROM kunden_felder_werte kfw
+JOIN (
+    SELECT bestellungsid, kundennummer, einzelpreis, produktid
+    FROM bestellungen_positionen 
+    WHERE produktid = (
+        SELECT produktid 
+        FROM produkte_felder_werte 
+        WHERE feldid = 44 AND wert1 = '8-21-2-1141'
+    ) 
+    ORDER BY datum DESC 
+    LIMIT 3
+) t1 ON t1.kundennummer = kfw.kundennummer
+WHERE kfw.feldid = 48
+
+
+SELECT kk.titel, t1.produktid, t1.bestellungsid, t1.kundennummer
+FROM kunden_kat_zuordnung kz
+JOIN (
+    SELECT bestellungsid, kundennummer, einzelpreis, produktid
+    FROM bestellungen_positionen 
+    WHERE produktid = (
+        SELECT produktid 
+        FROM produkte_felder_werte 
+        WHERE feldid = 44 AND wert1 = '8-21-2-1141'
+    ) 
+    ORDER BY datum DESC 
+    LIMIT 3
+) t1 ON t1.kundennummer = kz.kundennummer
+JOIN kunden_kat kk ON kk.ID = kz.kategorie
+
+
+SELECT bp.einzelpreis, bw.titel, bp.bestellungsid
+    FROM bestellungen b
+    JOIN (
+        SELECT bestellungsid, einzelpreis
+        FROM bestellungen_positionen 
+        WHERE produktid = (
+            SELECT produktid 
+            FROM produkte_felder_werte 
+            WHERE feldid = 44 AND wert1 = '8-21-37-5515'
+        ) 
+        ORDER BY datum DESC 
+        LIMIT 3
+    ) bp ON b.ID = bp.bestellungsid
+    JOIN bestellungen_werbekennzeichen bw ON bw.ID = b.werbekennzeichen
+    LIMIT 25

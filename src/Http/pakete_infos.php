@@ -24,7 +24,6 @@ $month_pkgs = $pdo->query($sql_month)->fetchAll(PDO::FETCH_ASSOC);
 $month_sum = array_sum(array_column($month_pkgs, 'Pakete'));
 
 // Base Order Statement
-// Base Order Statement
 $orderStmt = $pdo->prepare("
     SELECT bp.einzelpreis, bp.steuer, bw.titel
     FROM bestellungen b
@@ -169,7 +168,7 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
         }
 
         .page {
-            max-width: 1500px;
+            max-width: 98%;
             margin: 0 auto;
         }
 
@@ -249,6 +248,7 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
             border-radius: var(--radius);
             box-shadow: var(--shadow);
             border: 1px solid var(--stroke);
+            position: relative; /* WICHTIG: Damit die absolute Positionierung der Tabelle greift */
         }
 
         .panel-header {
@@ -274,7 +274,7 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
         }
 
         .kpi-table td {
-            padding: 10px 0;
+            padding: 8px 0;
             border-bottom: 1px solid var(--stroke);
             color: var(--ink);
         }
@@ -324,16 +324,21 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
         .data-table-title {
             font-size: 1.25rem;
             font-weight: 600;
-            margin-bottom: 20px;
             color: var(--ink);
-            display: block;
+            /* NEU: Absolute Positionierung, um sich die Zeile mit dem Suchfeld zu teilen */
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            margin: 0;
+            line-height: 32px; /* Zentriert die Schrift vertikal zur Suchbox */
+            z-index: 10;
         }
 
         table.dataTable {
             border-collapse: collapse !important;
             width: 100% !important;
-            margin-top: 16px !important;
-            margin-bottom: 16px !important;
+            margin-top: 10px !important;
+            margin-bottom: 10px !important;
             border-bottom: 1px solid var(--stroke) !important;
         }
 
@@ -341,10 +346,10 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
             background-color: var(--surface-soft) !important;
             color: var(--muted) !important;
             font-weight: 600 !important;
-            font-size: 0.85rem !important;
+            font-size: 0.75rem !important;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            padding: 14px 16px !important;
+            padding: 8px 10px !important;
             border-bottom: 1px solid var(--stroke) !important;
             border-top: none !important;
             font-family: 'Space Grotesk', sans-serif !important;
@@ -352,9 +357,10 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
 
         table.dataTable tbody td {
             vertical-align: middle;
-            padding: 14px 16px !important;
+            padding: 6px 10px !important;
             border-bottom: 1px solid var(--stroke) !important;
-            font-size: 0.95rem;
+            font-size: 0.85rem;
+            line-height: 1.3;
             transition: background-color 0.15s ease;
             box-sizing: border-box;
         }
@@ -368,28 +374,29 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
         }
 
         .dt-search {
-            margin-bottom: 16px;
+            margin-bottom: 12px;
             display: flex;
             align-items: center;
             justify-content: flex-end;
             gap: 12px;
+            min-height: 32px; /* Setzt die Höhe passend zur line-height der Überschrift */
         }
         
         .dt-search label {
             color: var(--muted);
-            font-size: 0.95rem;
+            font-size: 0.90rem;
             font-weight: 500;
         }
 
         .dt-search input {
             border: 1px solid var(--stroke);
             border-radius: var(--radius-sm);
-            padding: 8px 12px;
+            padding: 6px 10px;
             font-family: inherit;
-            font-size: 0.95rem;
+            font-size: 0.90rem;
             outline: none;
             transition: all 0.2s ease;
-            width: 250px;
+            width: 200px;
         }
         
         .dt-search input:focus {
@@ -406,7 +413,7 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
         .color-red { color: #dc2626; font-weight: 500; }
         .color-green { color: #16a34a; font-weight: 500; }
         .text-main { color: var(--ink); font-weight: 500; }
-        .red-text { color: var(--danger) !important; font-weight: 600; background-color: #fef2f2; border-radius: 4px; padding: 2px 6px; }
+        .red-text { color: var(--danger) !important; font-weight: 600; background-color: #fef2f2; border-radius: 4px; padding: 2px 4px; }
         .dt-left { text-align: left !important; }
         
         .artnr-link {
@@ -438,15 +445,11 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
 <body>
     <?php include __DIR__ . '/global_header.php'; ?>
     <div class="page">
-        
-        <div class="top-nav">
-            <a href="index.php" class="btn-ghost">&laquo; Zurück zur Übersicht</a>
-        </div>
 
-        <header class="hero">
+        <!-- <header class="hero">
             <p class="eyebrow">Logistik</p>
             <h1>Paket- und Versandinfos</h1>
-        </header>
+        </header> -->
 
         <div class="dashboard-grid">
             
@@ -525,7 +528,7 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
                         <tbody>
                             <?php foreach($positionen as $row): ?>
                                 <tr>
-                                    <td style="text-align: center; font-weight: 600;"><?= $row['anzahl'] ?></td>
+                                    <td style="text-align: center; font-weight: 600; font-size: 0.95rem;"><?= $row['anzahl'] ?></td>
                                     <td><span class="<?= $row['titleStyle'] ?>"><?= $row['titel'] ?></span></td>
                                     <td><a href="http://192.168.3.191:888/?ArtNr=<?= urlencode($row['artnr']) ?>" target="_blank" class="artnr-link"><?= htmlspecialchars($row['artnr']) ?></a></td>
                                     <td><?= $row['orders'][0] ?></td>
@@ -553,7 +556,7 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
                         <tbody>
                             <?php foreach($vendor as $row): ?>
                                 <tr>
-                                    <td style="text-align: center; font-weight: 600;"><?= $row['anzahl'] ?></td>
+                                    <td style="text-align: center; font-weight: 600; font-size: 0.95rem;"><?= $row['anzahl'] ?></td>
                                     <td><span class="<?= $row['titleStyle'] ?>"><?= $row['titel'] ?></span></td>
                                     <td><a href="http://192.168.3.191:888/?ArtNr=<?= urlencode($row['artnr']) ?>" target="_blank" class="artnr-link"><?= htmlspecialchars($row['artnr']) ?></a></td>
                                     <td><?= $row['orders'][0] ?></td>
@@ -594,7 +597,7 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
         $(document).ready(function() {
             let commonOptions = {
                 paging: false,
-                scrollY: '500px',
+                scrollY: '75vh', 
                 scrollCollapse: true,
                 info: false,
                 order: [[0, 'desc']],
