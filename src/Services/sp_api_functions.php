@@ -1200,13 +1200,17 @@ function getQuantityBySku($sku, $sellerId, $marketplaceId)
     // 1. Get the access token
     $accessToken = getAccessToken();
     if (is_null($accessToken)) {
-        echo "Failed to retrieve access token.\n";
+        error_log("Failed to retrieve access token in getQuantityBySku.");
         return null;
     }
 
     // 2. Define the API endpoint and parameters
-    $baseUrl = "https://sellingpartnerapi-eu.amazon.com"; // Change for other regions
-    $endpoint = "/listings/2021-08-01/items/{$sellerId}/{$sku}";
+    $baseUrl = "https://sellingpartnerapi-eu.amazon.com"; 
+    
+    // CRITICAL: Always urlencode SKUs in the URL path to prevent routing errors
+    $encodedSku = urlencode($sku); 
+    $endpoint = "/listings/2021-08-01/items/{$sellerId}/{$encodedSku}";
+    
     $queryParams = http_build_query([
         'marketplaceIds' => $marketplaceId,
         'includedData' => 'fulfillmentAvailability'
@@ -1217,54 +1221,54 @@ function getQuantityBySku($sku, $sellerId, $marketplaceId)
     // 3. Set up the request headers
     $headers = [
         "x-amz-access-token: " . $accessToken,
-        "Content-Type: application/json"
+        "Accept: application/json"
     ];
 
-    // 4. Create the stream context for the GET request
-    $options = [
-        "http" => [
-            "method" => "GET",
-            "header" => implode("\r\n", $headers)
-        ],
-    ];
+    // 4. Use cURL instead of file_get_contents
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    
+    // Strict timeouts: 5s to connect, 10s max execution
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
 
-    $context = stream_context_create($options);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    
+    curl_close($ch);
 
-    try {
-        // 5. Make the API call
-        $response = @file_get_contents($url, false, $context);
-        if ($response === false) {
-            $error = error_get_last();
-            if (isset($http_response_header)) {
-                $statusLine = $http_response_header[0];
-                if (strpos($statusLine, '404 Not Found') !== false) {
-                    echo "Error: SKU '{$sku}' not found.\n";
-                    return null;
-                }
-            }
-            echo "Failed to retrieve data for SKU '{$sku}'. Error: " . ($error['message'] ?? 'Unknown error') . "\n";
-            return null;
-        }
+    // 5. Handle Network / SSL Errors
+    if ($response === false) {
+        error_log("cURL Error in getQuantityBySku for SKU '{$sku}': " . $curlError);
+        return null;
+    }
 
-        // 6. Decode the JSON response
-        $data = json_decode($response, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            echo "Error decoding JSON response: " . json_last_error_msg() . "\n";
-            return null;
-        }
-        
-        // 7. Extract the quantity
-        // The API can return an array of offers. We'll check the first one.
-        if (isset($data['fulfillmentAvailability'][0]['quantity'])) {
-            $quantity = $data['fulfillmentAvailability'][0]['quantity'];
-            return $quantity;
-        } else {
-            echo "Quantity not found in the response for SKU '{$sku}'.\n";
-            return null;
-        }
+    // 6. Handle Amazon API Errors
+    if ($httpCode === 404) {
+        error_log("Error: SKU '{$sku}' not found on Amazon.");
+        return null;
+    }
 
-    } catch (Exception $e) {
-        echo "An unexpected error occurred: " . $e->getMessage() . "\n";
+    if ($httpCode >= 400) {
+        error_log("SP-API Error in getQuantityBySku (HTTP {$httpCode}): " . $response);
+        return null;
+    }
+
+    // 7. Decode and extract quantity
+    $data = json_decode($response, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        error_log("Error decoding JSON response for SKU '{$sku}': " . json_last_error_msg());
+        return null;
+    }
+    
+    if (isset($data['fulfillmentAvailability'][0]['quantity'])) {
+        return $data['fulfillmentAvailability'][0]['quantity'];
+    } else {
+        error_log("Quantity not found in the response for SKU '{$sku}'. Response: " . json_encode($data));
         return null;
     }
 }
