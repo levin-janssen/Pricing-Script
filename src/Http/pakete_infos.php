@@ -45,10 +45,10 @@ $orderStmt = $pdo->prepare("
 function fetchTableData($pdo, $sql, $orderStmt) {
     $data = [];
     $replacements = [
-        '(Otto)' => '<img src="img/otto.png" alt="Otto" width="35" height="16">',
-        '(Amazon)' => '<img src="img/amazon.png" alt="Amazon" width="16" height="16">',
-        '(manomano)' => '<img src="img/manomano.png" alt="Manomano" width="16" height="16">',
-        '(eBay)' => '<img src="img/ebay.png" alt="eBay" width="40" height="16">'
+        '(Otto)' => '<img src="img/otto.png" alt="Otto" width="35" height="16" style="vertical-align: middle;">',
+        '(Amazon)' => '<img src="img/amazon.png" alt="Amazon" width="16" height="16" style="vertical-align: middle;">',
+        '(manomano)' => '<img src="img/manomano.png" alt="Manomano" width="16" height="16" style="vertical-align: middle;">',
+        '(eBay)' => '<img src="img/ebay.png" alt="eBay" width="40" height="16" style="vertical-align: middle;">'
     ];
 
     foreach ($pdo->query($sql) as $row) {
@@ -71,7 +71,7 @@ function fetchTableData($pdo, $sql, $orderStmt) {
 
         $orders = [];
         foreach ($result as $item) {
-            $price = number_format((float)$item["einzelpreis"]*1.19, 2, ',', '') . "€ (" . $item["titel"] . ")";
+            $price = number_format((float)$item["einzelpreis"]*1.19, 2, ',', '') . "€ <span style='font-size:0.85em; color:var(--muted);'>(" . $item["titel"] . ")</span>";
             $orders[] = str_replace(array_keys($replacements), array_values($replacements), $price);
         }
         while (count($orders) < 3) $orders[] = "";
@@ -117,121 +117,156 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex,nofollow">
     <title>Paket- und Versandinfos</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.datatables.net/2.2.2/css/dataTables.dataTables.css" />
+    <link rel="icon" type="image/x-icon" href="img/tag.ico" sizes="32x32">
+
     <style>
         :root {
-            --bg-color: #f4f7f6;
-            --text-main: #1f2937;
-            --text-muted: #6b7280;
-            --primary: #374151;
-            --primary-hover: #111827;
-            --card-bg: #ffffff;
-            --border-color: #e5e7eb;
+            --ink: #0f172a;
+            --muted: #64748b;
+            --muted-light: #94a3b8;
+            --accent: #ea580c;
+            --primary: #2563eb;
+            --surface: #ffffff;
+            --surface-soft: #f8fafc;
+            --stroke: #e2e8f0;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --ring: rgba(37, 99, 235, 0.25);
             --danger: #ef4444;
-            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
 
         body {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            margin: 0;
-            padding: 0;
+            font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+            color: var(--ink);
+            background: radial-gradient(1200px circle at top left, #fff1e6 0%, #f2f6ff 42%, #eefbf7 70%, #f4f4f4 100%);
+            background-attachment: fixed;
+            padding: 40px 20px 80px;
             line-height: 1.5;
             -webkit-font-smoothing: antialiased;
         }
 
-        /* Optimiertes Padding und vergrößerte Breite für große Bildschirme */
-        .dashboard-container {
-            max-width: 1750px;
+        .page {
+            max-width: 1500px;
             margin: 0 auto;
-            padding: 2rem 1rem;
         }
 
-        .header {
-            margin-bottom: 2rem;
-            padding: 0 0.5rem;
+        /* --- Header & Nav --- */
+        .top-nav {
+            margin-bottom: 24px;
         }
-        
-        .header-title h1 {
+
+        .btn-ghost {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: 42px;
+            padding: 0 20px;
+            border-radius: var(--radius-sm);
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            background: var(--surface);
+            color: var(--ink);
+            border: 1px solid var(--stroke);
+        }
+        .btn-ghost:hover {
+            background: var(--surface-soft);
+            border-color: var(--muted-light);
+        }
+
+        .hero {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 32px;
+        }
+
+        .hero .eyebrow {
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .hero h1 {
             font-size: 2.25rem;
             font-weight: 700;
             letter-spacing: -0.02em;
-            margin: 0;
-            color: var(--text-main);
+            color: var(--ink);
         }
 
-        .nav-back {
-            text-decoration: none;
-            color: var(--text-muted);
-            font-weight: 500;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 1.25rem;
-            padding: 0 0.5rem;
-            transition: color 0.2s ease;
-        }
-
-        .nav-back:hover {
-            color: var(--primary-hover);
-        }
-
-        /* Haupt-Layout: Sidebar + Content-Grid */
-        .main-content-wrapper {
+        /* --- Dashboard Layout --- */
+        .dashboard-grid {
             display: grid;
-            grid-template-columns: 350px 1fr;
-            gap: 1.5rem;
+            grid-template-columns: 340px 1fr;
+            gap: 24px;
             align-items: start;
         }
 
         .kpi-sidebar {
             display: flex;
             flex-direction: column;
-            gap: 1.5rem;
+            gap: 24px;
         }
 
-        .card {
-            background: var(--card-bg);
-            border: none;
-            border-radius: 16px;
-            padding: 1.5rem;
-            box-shadow: var(--shadow-md);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        .tables-content {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
         }
 
-        .card:hover {
-            box-shadow: var(--shadow-lg);
+        /* --- Panels --- */
+        .panel {
+            background: var(--surface);
+            padding: 24px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--stroke);
         }
 
-        .card-header-flex {
+        .panel-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 1.25rem;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 0.75rem;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--stroke);
+            padding-bottom: 12px;
         }
 
-        .card-title {
-            font-size: 1.125rem;
+        .panel-title {
+            font-size: 1.15rem;
             font-weight: 600;
-            color: var(--primary);
+            color: var(--ink);
         }
 
+        /* --- KPI Tables --- */
         .kpi-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 0.9rem;
+            font-size: 0.95rem;
         }
 
         .kpi-table td {
-            padding: 0.75rem 0;
-            border-bottom: 1px solid var(--border-color);
-            color: var(--text-main);
+            padding: 10px 0;
+            border-bottom: 1px solid var(--stroke);
+            color: var(--ink);
         }
 
         .kpi-table tr:last-child td {
@@ -241,125 +276,142 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
         .kpi-table td:last-child {
             text-align: right;
             font-weight: 600;
+            font-variant-numeric: tabular-nums;
         }
 
+        /* --- Date Navigator --- */
         .date-nav {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: #f9fafb;
-            padding: 0.75rem 1rem;
-            border-radius: 10px;
-            border: 1px solid var(--border-color);
+            background: var(--surface-soft);
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--stroke);
+            margin-bottom: 16px;
         }
 
         .date-nav a {
             text-decoration: none;
-            color: var(--text-muted);
+            color: var(--muted);
             font-weight: 600;
             font-size: 1.25rem;
-            padding: 0 0.5rem;
+            padding: 0 8px;
             transition: color 0.2s ease;
         }
         
         .date-nav a:hover {
-            color: var(--primary-hover);
+            color: var(--primary);
         }
 
         .date-nav span {
             font-weight: 600;
             font-size: 0.95rem;
+            color: var(--ink);
         }
 
-        .tables-content {
-            display: flex;
-            flex-direction: column;
-            gap: 2rem;
-        }
-
-        /* Moderne DataTables Anpassungen */
-        .dataTables_wrapper {
-            background: var(--card-bg);
-            border: none;
-            border-radius: 16px;
-            padding: 1.75rem;
-            box-shadow: var(--shadow-md);
-        }
-
+        /* --- DataTables Overrides --- */
         .data-table-title {
-            font-size: 1.35rem;
-            font-weight: 700;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            color: var(--primary);
-            border-bottom: 2px solid var(--border-color);
-            letter-spacing: -0.01em;
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--ink);
+            display: block;
         }
 
         table.dataTable {
             border-collapse: collapse !important;
-            margin-top: 1rem !important;
-            margin-bottom: 1rem !important;
             width: 100% !important;
+            margin-top: 16px !important;
+            margin-bottom: 16px !important;
+            border-bottom: 1px solid var(--stroke) !important;
         }
 
         table.dataTable thead th {
-            background-color: #f9fafb;
-            color: var(--text-muted);
-            font-weight: 600;
-            font-size: 0.75rem;
+            background-color: var(--surface-soft) !important;
+            color: var(--muted) !important;
+            font-weight: 600 !important;
+            font-size: 0.85rem !important;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            padding: 1rem;
-            border-bottom: 2px solid var(--border-color) !important;
+            padding: 14px 16px !important;
+            border-bottom: 1px solid var(--stroke) !important;
             border-top: none !important;
+            font-family: 'Space Grotesk', sans-serif !important;
         }
 
         table.dataTable tbody td {
             vertical-align: middle;
-            padding: 1rem;
-            border-bottom: 1px solid var(--border-color);
-            font-size: 0.9rem;
+            padding: 14px 16px !important;
+            border-bottom: 1px solid var(--stroke) !important;
+            font-size: 0.95rem;
             transition: background-color 0.15s ease;
+            box-sizing: border-box;
+        }
+        
+        table.dataTable.no-footer {
+            border-bottom: 1px solid var(--stroke) !important;
         }
 
         table.dataTable tbody tr:hover td {
-            background-color: #f9fafb;
+            background-color: var(--surface-soft);
         }
 
-        /* Modernes Suchfeld */
+        .dt-search {
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        
+        .dt-search label {
+            color: var(--muted);
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+
         .dt-search input {
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 0.5rem 1rem;
+            border: 1px solid var(--stroke);
+            border-radius: var(--radius-sm);
+            padding: 8px 12px;
             font-family: inherit;
-            font-size: 0.875rem;
+            font-size: 0.95rem;
             outline: none;
             transition: all 0.2s ease;
+            width: 250px;
         }
+        
         .dt-search input:focus {
-            border-color: #9ca3af;
-            box-shadow: 0 0 0 3px rgba(156, 163, 175, 0.15);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--ring);
+        }
+        
+        .dt-scroll-body {
+            border-bottom: none !important;
         }
 
+        /* --- Typography Helpers --- */
         .color-blue { color: #2563eb; font-weight: 500; }
         .color-red { color: #dc2626; font-weight: 500; }
         .color-green { color: #16a34a; font-weight: 500; }
-        .text-main { color: var(--text-main); font-weight: 500; }
-        .red-text { color: var(--danger); font-weight: 600; }
+        .text-main { color: var(--ink); font-weight: 500; }
+        .red-text { color: var(--danger) !important; font-weight: 600; background-color: #fef2f2; border-radius: 4px; padding: 2px 6px; }
         .dt-left { text-align: left !important; }
-
-        /* Responsive Design */
-        @media (max-width: 1200px) {
-            .main-content-wrapper {
-                grid-template-columns: 300px 1fr;
-                gap: 1rem;
-            }
+        
+        .artnr-link {
+            color: var(--primary);
+            font-weight: 600;
+            text-decoration: none;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.95em;
         }
-        @media (max-width: 1024px) {
-            .main-content-wrapper {
-                grid-template-columns: 1fr;
-            }
+        .artnr-link:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 1200px) {
+            .dashboard-grid { grid-template-columns: 1fr; }
             .kpi-sidebar {
                 flex-direction: row;
                 flex-wrap: wrap;
@@ -367,33 +419,34 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
                 grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             }
         }
+        @media (max-width: 768px) {
+            body { padding: 24px 16px 40px; }
+            .kpi-sidebar { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
-    <div class="dashboard-container">
-        <a href="index.php" class="nav-back">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="19" y1="12" x2="5" y2="12"></line>
-                <polyline points="12 19 5 12 12 5"></polyline>
-            </svg>
-            Zurück zum Dashboard
-        </a>
-
-        <div class="header">
-            <div class="header-title">
-                <h1>Paket- und Versandinfos</h1>
-            </div>
+    <div class="page">
+        
+        <div class="top-nav">
+            <a href="index.php" class="btn-ghost">&laquo; Zurück zur Übersicht</a>
         </div>
 
-        <div class="main-content-wrapper">
+        <header class="hero">
+            <p class="eyebrow">Logistik</p>
+            <h1>Paket- und Versandinfos</h1>
+        </header>
+
+        <div class="dashboard-grid">
+            
             <aside class="kpi-sidebar">
-                <div class="card">
-                    <div class="card-header-flex">
-                        <div class="card-title">Offene Stationen</div>
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">Offene Stationen</div>
                     </div>
                     <table class="kpi-table">
                         <?php if(empty($open_pkgs)): ?>
-                            <tr><td colspan="2" style="text-align: center; color: var(--text-muted);">Keine offenen Lieferungen</td></tr>
+                            <tr><td colspan="2" style="text-align: center; color: var(--muted); border: none;">Keine offenen Lieferungen</td></tr>
                         <?php else: ?>
                             <?php foreach($open_pkgs as $row): ?>
                                 <tr><td><?= htmlspecialchars($row['titel']) ?></td><td><?= $row['Anzahl'] ?></td></tr>
@@ -402,18 +455,18 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
                     </table>
                 </div>
 
-                <div class="card">
-                    <div class="card-header-flex">
-                        <div class="card-title">Tagesübersicht</div>
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">Tagesübersicht</div>
                     </div>
-                    <div class="date-nav mb-3" style="margin-bottom: 1.25rem;">
+                    <div class="date-nav">
                         <a href="?datum=<?= $datum_gestern ?>">&laquo;</a>
                         <span><?= htmlspecialchars($datum) ?></span>
                         <a href="?datum=<?= $datum_morgen ?>">&raquo;</a>
                     </div>
                     <table class="kpi-table">
                         <?php if(empty($day_pkgs)): ?>
-                            <tr><td colspan="2" style="text-align: center; color: var(--text-muted);">Keine Daten für diesen Tag</td></tr>
+                            <tr><td colspan="2" style="text-align: center; color: var(--muted); border: none;">Keine Daten für diesen Tag</td></tr>
                         <?php else: ?>
                             <?php foreach($day_pkgs as $row): ?>
                                 <?php $v = empty($row['versandedit']) ? "amazon FBA" : $row['versandedit']; ?>
@@ -423,21 +476,21 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
                     </table>
                 </div>
 
-                <div class="card">
-                    <div class="card-header-flex">
-                        <div class="card-title">Monatsübersicht (<?= date("F Y") ?>)</div>
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">Monatsübersicht (<?= date("F Y") ?>)</div>
                     </div>
                     <table class="kpi-table">
                         <?php if(empty($month_pkgs)): ?>
-                            <tr><td colspan="2" style="text-align: center; color: var(--text-muted);">Keine Daten für diesen Monat</td></tr>
+                            <tr><td colspan="2" style="text-align: center; color: var(--muted); border: none;">Keine Daten für diesen Monat</td></tr>
                         <?php else: ?>
                             <?php foreach($month_pkgs as $row): ?>
                                 <?php $v = empty($row['versandedit']) ? "amazon FBA" : $row['versandedit']; ?>
                                 <tr><td><?= htmlspecialchars($v) ?></td><td><?= $row['Pakete'] ?></td></tr>
                             <?php endforeach; ?>
-                            <tr style="border-top: 2px solid var(--border-color);">
-                                <td><strong>Summe</strong></td>
-                                <td><strong><?= $month_sum ?></strong></td>
+                            <tr style="border-top: 2px solid var(--stroke);">
+                                <td style="padding-top: 16px;"><strong>Summe</strong></td>
+                                <td style="padding-top: 16px; color: var(--primary);"><strong><?= $month_sum ?></strong></td>
                             </tr>
                         <?php endif; ?>
                     </table>
@@ -445,12 +498,12 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
             </aside>
 
             <main class="tables-content">
-                <div class="table-wrapper">
+                <div class="panel">
+                    <span class="data-table-title">Positionen (Regulär)</span>
                     <table id="resultTable" class="display" style="width:100%">
-                        <caption class="data-table-title" style="caption-side: top; text-align: left;">Positionen (Regulär)</caption>
                         <thead>
                             <tr>
-                                <th>Anzahl</th>
+                                <th width="8%">Anzahl</th>
                                 <th width="35%">Artikel</th>
                                 <th>Art-Nr</th>
                                 <th>Order 1</th>
@@ -461,9 +514,9 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
                         <tbody>
                             <?php foreach($positionen as $row): ?>
                                 <tr>
-                                    <td><?= $row['anzahl'] ?></td>
+                                    <td style="text-align: center; font-weight: 600;"><?= $row['anzahl'] ?></td>
                                     <td><span class="<?= $row['titleStyle'] ?>"><?= $row['titel'] ?></span></td>
-                                    <td><a href="http://192.168.3.191:888/?ArtNr=<?= urlencode($row['artnr']) ?>" target="_blank" style="color: var(--primary); font-weight:600; text-decoration:none;"><?= htmlspecialchars($row['artnr']) ?></a></td>
+                                    <td><a href="http://192.168.3.191:888/?ArtNr=<?= urlencode($row['artnr']) ?>" target="_blank" class="artnr-link"><?= htmlspecialchars($row['artnr']) ?></a></td>
                                     <td><?= $row['orders'][0] ?></td>
                                     <td><?= $row['orders'][1] ?></td>
                                     <td><?= $row['orders'][2] ?></td>
@@ -473,12 +526,12 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
                     </table>
                 </div>
 
-                <div class="table-wrapper">
+                <div class="panel">
+                    <span class="data-table-title">Vendor (Spezial)</span>
                     <table id="vendorTable" class="display" style="width:100%">
-                        <caption class="data-table-title" style="caption-side: top; text-align: left;">Vendor (Spezial)</caption>
                         <thead>
                             <tr>
-                                <th>Anzahl</th>
+                                <th width="8%">Anzahl</th>
                                 <th width="35%">Artikel</th>
                                 <th>Art-Nr</th>
                                 <th>Order 1</th>
@@ -489,9 +542,9 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
                         <tbody>
                             <?php foreach($vendor as $row): ?>
                                 <tr>
-                                    <td><?= $row['anzahl'] ?></td>
+                                    <td style="text-align: center; font-weight: 600;"><?= $row['anzahl'] ?></td>
                                     <td><span class="<?= $row['titleStyle'] ?>"><?= $row['titel'] ?></span></td>
-                                    <td><a href="http://192.168.3.191:888/?ArtNr=<?= urlencode($row['artnr']) ?>" target="_blank" style="color: var(--primary); font-weight:600; text-decoration:none;"><?= htmlspecialchars($row['artnr']) ?></a></td>
+                                    <td><a href="http://192.168.3.191:888/?ArtNr=<?= urlencode($row['artnr']) ?>" target="_blank" class="artnr-link"><?= htmlspecialchars($row['artnr']) ?></a></td>
                                     <td><?= $row['orders'][0] ?></td>
                                     <td><?= $row['orders'][1] ?></td>
                                     <td><?= $row['orders'][2] ?></td>
@@ -501,6 +554,7 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
                     </table>
                 </div>
             </main>
+            
         </div>
     </div>
 
@@ -529,7 +583,7 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
         $(document).ready(function() {
             let commonOptions = {
                 paging: false,
-                scrollY: '600px',
+                scrollY: '500px',
                 scrollCollapse: true,
                 info: false,
                 order: [[0, 'desc']],
@@ -539,7 +593,6 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
                 columnDefs: [
                     { targets: [3, 4, 5], className: 'dt-left' }
                 ],
-                // Call checkAndColorRows after DataTables draws to handle dynamic changes
                 drawCallback: function(settings) {
                     checkAndColorRows(settings.sTableId);
                 }
