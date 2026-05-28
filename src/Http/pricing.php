@@ -166,11 +166,14 @@ foreach ($marketplaces as $key => $value) {
         } else{
             echo "Fehler beim Setzen des Preises für SKU $sku.<br>\r\n";
             Logger::error("Fehler beim Setzen des Preises (updateAmazonProductPrice)", ['sku' => $sku, 'preis' => $preis, 'marketplaceId' => $marketplaceId]);
-        }
-        
+        }        
         // END ASIN-TIMER
         Logger::performance("ASIN Processed (Complete)", microtime(true) - $asinStartTime, ['asin' => $asin, 'sku' => $sku]);
-    }
+        
+        // --- NEW: RATE LIMIT THROTTLE ---
+        // Pause the script for 2 seconds to respect Amazon's leaky bucket rate limits
+        sleep(2);
+    } // <-- This is the closing bracket of the foreach loop
 
     // END MARKETPLACE-TIMER
     Logger::performance("Marketplace Processed ($key)", microtime(true) - $mpStartTime, ['marketplace' => $key]);
@@ -267,9 +270,11 @@ function processAsin($asin, $concurrentData) {
     // --- REPLACED SEQUENTIAL API CALLS WITH CONCURRENT DATA ---
     $data = $concurrentData['items_api']['data'] ?? null;
     
-    if (!$data) {
-        Logger::error("API Data Request fehlgeschlagen (Items API aus Concurrent Fetch)", ['asin' => $asin, 'sku' => $sku]);
-        return null;
+    // NEW: Check if data is completely missing OR if Amazon returned an error (like QuotaExceeded)
+    if (!$data || isset($data['errors'])) {
+        $errorMessage = $data['errors'][0]['message'] ?? 'Unbekannter API Fehler (z.B. Rate Limit)';
+        Logger::warning("API Request übersprungen: " . $errorMessage, ['asin' => $asin, 'sku' => $sku]);
+        return null; // Skip this ASIN to avoid writing NULL to the database
     }
 
     $buyboxpreis_raw = getInfoByASIN($data, "buyboxpreis");
