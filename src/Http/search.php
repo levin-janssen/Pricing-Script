@@ -593,6 +593,7 @@ $db_error = !isset($marketplaces[$current_marketplace_code]) ? "Fehler: Unbekann
                             <option value="all">Alle anzeigen</option>
                             <option value="min">An Min-Grenze</option>
                             <option value="max">An Max-Grenze</option>
+                            <option value="between">Zwischen Min & Max</option>
                         </select>
                     </div>
                 </div>
@@ -717,9 +718,23 @@ $db_error = !isset($marketplaces[$current_marketplace_code]) ? "Fehler: Unbekann
                 if (show && limitFilter !== 'all') {
                     const atMin = row.getAttribute('data-at-min');
                     const atMax = row.getAttribute('data-at-max');
+                    
+                    // Berechnung für "Zwischen"
+                    const minPreis = parseFloat(row.getAttribute('data-min'));
+                    const maxPreis = parseFloat(row.getAttribute('data-max'));
+                    const currentPriceText = row.children[7].textContent; // Spalte "Akt. Preis"
+                    const currentPrice = parseFloat(currentPriceText.replace(/[^0-9,.-]+/g, '').replace(',', '.'));
 
                     if (limitFilter === 'min' && atMin !== '1') show = false;
                     if (limitFilter === 'max' && atMax !== '1') show = false;
+                    
+                    // Logik für "zwischen": Preis ist größer als Min UND kleiner als Max
+                    if (limitFilter === 'between') {
+                        const stepSmall = parseFloat(row.getAttribute('data-stepsize')) || 0.01;
+                        if (!(currentPrice > (minPreis + stepSmall) && currentPrice < (maxPreis - stepSmall))) {
+                            show = false;
+                        }
+                    }
                 }
 
                 row.style.display = show ? '' : 'none';
@@ -868,6 +883,7 @@ $db_error = !isset($marketplaces[$current_marketplace_code]) ? "Fehler: Unbekann
             tr.dataset.bbprice = bbPrice !== '' ? String(bbPrice) : '';
             tr.dataset.atMin = String(atMin);
             tr.dataset.atMax = String(atMax);
+            tr.dataset.stepsize = String(stepSmall);
 
             const asinTd = document.createElement('td');
             const asinSpan = document.createElement('span');
