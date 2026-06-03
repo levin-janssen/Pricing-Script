@@ -7,16 +7,20 @@ require_once APP_ROOT . '/config/marketplaces.php';
 require_once APP_ROOT . '/config/db_connection.php';
 $dbConnection = $dbConnectionTric4Calc;
 
-$asins_for_country = [];
-$db_error = '';
+$current_marketplace_code = isset($_GET['country']) ? strtoupper(filter_input(INPUT_GET, 'country', FILTER_SANITIZE_STRING)) : '';
+if (!$current_marketplace_code) die("Missing country");
 
-// --- Determine current country from directory path ---
-$current_marketplace_code = isset($_GET['country']) ? strtoupper(filter_input(INPUT_GET, 'country', FILTER_SANITIZE_STRING)) : ''; if(!$current_marketplace_code) die("Missing country");
+$mode = isset($_GET['mode']) ? strtolower((string)$_GET['mode']) : 'page';
 
-if (!isset($marketplaces[$current_marketplace_code])) {
-    $db_error = "Fehler: Unbekannter Marketplace-Code '" . htmlspecialchars($current_marketplace_code) . "' aus Verzeichnispfad.";
-} else {
-    // Fetch ASINs that are configured in Preisgrenzen for the current country
+// --- Asynchronous Data Endpoint ---
+if ($mode === 'data') {
+    header('Content-Type: application/json');
+    
+    if (!isset($marketplaces[$current_marketplace_code])) {
+        echo json_encode(['error' => "Fehler: Unbekannter Marketplace-Code '" . htmlspecialchars($current_marketplace_code) . "'"]);
+        exit;
+    }
+
     try {
         $stmt = $dbConnection->prepare(
             "SELECT pg.ASIN, a.artikelname, a.sku, pg.min_preis, pg.max_preis, pg.stepsize_small, pg.stepsize_big, a.ID as produktid
@@ -36,10 +40,9 @@ if (!isset($marketplaces[$current_marketplace_code])) {
             $produktIds = array_column($asins_for_country, 'produktid');
             $inQuery = implode(',', array_fill(0, count($produktIds), '?'));
             
-            // --- Fetch Buybox Data ---
+            // Fetch Buybox Data
             $buybox_table = $marketplaces[$current_marketplace_code]['dbName'] ?? '';
             if (!empty($buybox_table)) {
-                // Subquery joining by max datum for each produktid
                 $queryBB = "
                     SELECT bb.produktid, bb.isWinner, bb.eigenerpreis, bb.niedrigsterPreis, bb.buyboxPreis
                     FROM $buybox_table bb
@@ -59,7 +62,7 @@ if (!isset($marketplaces[$current_marketplace_code])) {
                 }
             }
 
-            // --- Fetch Tricoma Stock Data ---
+            // Fetch Tricoma Stock Data
             $asinList = array_unique(array_column($asins_for_country, 'ASIN'));
             if (!empty($asinList)) {
                 $asinPlaceholders = implode(',', array_fill(0, count($asinList), '?'));
@@ -110,27 +113,42 @@ if (!isset($marketplaces[$current_marketplace_code])) {
             unset($item);
         }
 
+        // Stats Calculation
+        $statTotal = count($asins_for_country);
+        $statInBB = 0;
+        $statOutStock = 0;
+
+        foreach ($asins_for_country as $item) {
+            if (isset($item['buybox_data'])) {
+                $isW = strtolower(trim((string)$item['buybox_data']['isWinner']));
+                if (in_array($isW, ['ja', '1', 'true'], true)) $statInBB++;
+            }
+            if (isset($item['stock_data']) && $item['stock_data']['real'] <= 0) {
+                $statOutStock++;
+            }
+        }
+
+        $currencyCode = $marketplaces[$current_marketplace_code]['currencyCode'] ?? 'EUR';
+
+        echo json_encode([
+            'items' => $asins_for_country,
+            'stats' => [
+                'total' => $statTotal,
+                'in_bb' => $statInBB,
+                'out_stock' => $statOutStock
+            ],
+            'currencyCode' => $currencyCode
+        ]);
+
     } catch (\PDOException $e) {
-        error_log("DB Fehler in index.php für Land $current_marketplace_code: " . $e->getMessage());
-        $db_error = "Fehler beim Abrufen der ASIN-Liste für Land " . htmlspecialchars($current_marketplace_code) . ".";
+        error_log("DB Fehler für Land $current_marketplace_code: " . $e->getMessage());
+        echo json_encode(['error' => 'Fehler beim Abrufen der Daten für Land ' . htmlspecialchars($current_marketplace_code)]);
     }
+    exit;
 }
 
-// Quick Stats Calculation
-$statTotal = count($asins_for_country);
-$statInBB = 0;
-$statOutStock = 0;
-
-foreach ($asins_for_country as $item) {
-    if (isset($item['buybox_data'])) {
-        $isW = strtolower(trim((string)$item['buybox_data']['isWinner']));
-        if (in_array($isW, ['ja', '1', 'true'], true)) $statInBB++;
-    }
-    if (isset($item['stock_data']) && $item['stock_data']['real'] <= 0) {
-        $statOutStock++;
-    }
-}
-
+// --- Page Rendering ---
+$db_error = !isset($marketplaces[$current_marketplace_code]) ? "Fehler: Unbekannter Marketplace-Code '" . htmlspecialchars($current_marketplace_code) . "' aus Verzeichnispfad." : "";
 ?>
 <!DOCTYPE html>
 <html lang="de">
@@ -529,15 +547,15 @@ foreach ($asins_for_country as $item) {
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">Produkte</div>
-                        <div class="stat-value"><?= $statTotal ?></div>
+                        <div class="stat-value" id="statTotal">...</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">In Buybox</div>
-                        <div class="stat-value" style="color: #166534;"><?= $statInBB ?></div>
+                        <div class="stat-value" id="statInBB" style="color: #166534;">...</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">OOS (0 Bestand)</div>
-                        <div class="stat-value" style="color: #991b1b;"><?= $statOutStock ?></div>
+                        <div class="stat-value" id="statOutStock" style="color: #991b1b;">...</div>
                     </div>
                 </div>
             </div>
@@ -580,127 +598,70 @@ foreach ($asins_for_country as $item) {
                 </div>
             </div>
 
-            <?php if (empty($asins_for_country)): ?>
-                <div class="no-data">
-                    Aktuell sind keine Produkte für <strong><?= htmlspecialchars($current_marketplace_code) ?></strong> konfiguriert.<br><br>
-                    <a href="addNew.php?country=<?= urlencode($current_marketplace_code) ?>" class="action-link">+ Erstes Produkt hinzufügen</a>
-                </div>
-            <?php else: ?>
-                <div class="table-wrap">
-                    <table id="productsTable">
-                        <thead>
-                            <tr>
-                                <th data-sort="string">ASIN</th>
-                                <th data-sort="string">SKU</th>
-                                <th data-sort="string">Produktname</th>
-                                <th data-sort="number" style="text-align: center;">Bestand</th>
-                                <th data-sort="string" style="text-align: center;">Buybox</th>
-                                <th data-sort="currency">Min Preis</th>
-                                <th data-sort="currency">Max Preis</th>
-                                <th data-sort="currency">Akt. Preis</th>
-                                <th style="text-align: right; cursor: default;">Aktion</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($asins_for_country as $item): ?>
-                                <?php 
-                                    $currency = isset($marketplaces[$current_marketplace_code]['currencyCode']) ? ($marketplaces[$current_marketplace_code]['currencyCode'] === 'GBP' ? '£' : ($marketplaces[$current_marketplace_code]['currencyCode'] === 'SEK' ? 'kr' : '€')) : '€'; 
-                                    
-                                    $bb_status = 'Unbekannt';
-                                    $bb_class = 'badge-gray';
-                                    $eigener_preis_str = '-';
-                                    $stock_val = 0;
-                                    $stock_class = 'badge-red';
-                                    
-                                    if (isset($item['stock_data'])) {
-                                        $stock_val = $item['stock_data']['real'];
-                                        if ($stock_val > 10) $stock_class = 'badge-green';
-                                        elseif ($stock_val > 0) $stock_class = 'badge-yellow';
-                                    }
-                                    
-                                    $eigener_preis_float = null;
+            <div id="dataError" class="alert" hidden></div>
 
-                                    if (isset($item['buybox_data'])) {
-                                        $isWinner = strtolower(trim((string)$item['buybox_data']['isWinner']));
-                                        if ($isWinner === 'ja' || $isWinner === '1' || $isWinner === 'true') {
-                                            $bb_status = 'Ja';
-                                            $bb_class = 'badge-green';
-                                        } else if ($isWinner === 'nein' || $isWinner === '0' || $isWinner === 'false') {
-                                            $bb_status = 'Nein';
-                                            $bb_class = 'badge-red';
-                                        }
-                                        
-                                        $eigener_preis_float = (float)$item['buybox_data']['eigenerpreis'];
-                                        $eigener_preis_str = number_format($eigener_preis_float, 2, ',', '.') . ' ' . $currency;
-                                    }
-                                    
-                                    $bb_price = isset($item['buybox_data']) && is_numeric($item['buybox_data']['buyboxPreis']) ? $item['buybox_data']['buyboxPreis'] : '';
-                                    
-                                    // Limits
-                                    $min_class = 'badge-gray';
-                                    $max_class = 'badge-gray';
-                                    $at_min = 0;
-                                    $at_max = 0;
-                                    if ($eigener_preis_float !== null) {
-                                        $min_preis = (float)$item['min_preis'];
-                                        $max_preis = (float)$item['max_preis'];
-                                        $step_small = (float)$item['stepsize_small'];
-                                        
-                                        if (abs($eigener_preis_float - $min_preis) <= $step_small + 0.005) {
-                                            $min_class = 'badge-yellow';
-                                            $at_min = 1;
-                                        }
-                                        if (abs($eigener_preis_float - $max_preis) <= $step_small + 0.005) {
-                                            $max_class = 'badge-green';
-                                            $at_max = 1;
-                                        }
-                                    }
-                                ?>
-                                <tr class="product-row"
-                                    data-bb="<?= strtolower($bb_status) ?>"
-                                    data-stock="<?= $stock_val ?>"
-                                    data-min="<?= $item['min_preis'] ?>"
-                                    data-max="<?= $item['max_preis'] ?>"
-                                    data-bbprice="<?= $bb_price ?>"
-                                    data-at-min="<?= $at_min ?>"
-                                    data-at-max="<?= $at_max ?>"
-                                >
-                                    <td><span class="asin-text"><?= htmlspecialchars($item['ASIN']) ?></span></td>
-                                    <td><span class="sku-text"><?= htmlspecialchars($item['sku']) ?></span></td>
-                                    <td class="item-title" title="<?= htmlspecialchars($item['artikelname']) ?>">
-                                        <?= htmlspecialchars($item['artikelname']) ?>
-                                    </td>
-                                    <td style="text-align: center;">
-                                        <a href="bestandsabweichungen_historie.php?asin=<?= urlencode($item['ASIN']) ?>" style="text-decoration: none;">
-                                            <span class="badge <?= $stock_class ?>" title="Roher Lagerbestand: <?= isset($item['stock_data']) ? $item['stock_data']['pure'] : 0 ?>"><?= $stock_val ?></span>
-                                        </a>
-                                    </td>
-                                    <td style="text-align: center;">
-                                        <span class="badge <?= $bb_class ?>"><?= $bb_status ?></span>
-                                    </td>
-                                    <td><span class="badge <?= $min_class ?>" title="<?= $at_min ? 'Aktueller Preis liegt an der Min-Grenze!' : '' ?>"><?= htmlspecialchars(number_format((float)$item['min_preis'], 2, ',', '.')) ?> <?= $currency ?></span></td>
-                                    <td><span class="badge <?= $max_class ?>" title="<?= $at_max ? 'Aktueller Preis liegt an der Max-Grenze!' : '' ?>"><?= htmlspecialchars(number_format((float)$item['max_preis'], 2, ',', '.')) ?> <?= $currency ?></span></td>
-                                    <td><span class="badge badge-blue"><?= $eigener_preis_str ?></span></td>
-                                    <td style="text-align: right;">
-                                        <a href="results.php?country=<?= urlencode($current_marketplace_code) ?>&asin=<?= urlencode($item['ASIN']) ?>" class="action-link">Bearbeiten &rarr;</a>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endif; ?>
+            <div id="loadingState" class="no-data">
+                Daten werden geladen.
+            </div>
+
+            <div id="noDataMessage" class="no-data" hidden>
+                Aktuell sind keine Produkte für <strong><?= htmlspecialchars($current_marketplace_code) ?></strong> konfiguriert.<br><br>
+                <a href="addNew.php?country=<?= urlencode($current_marketplace_code) ?>" class="action-link">+ Erstes Produkt hinzufügen</a>
+            </div>
+
+            <div id="tableWrap" class="table-wrap" hidden>
+                <table id="productsTable">
+                    <thead>
+                        <tr>
+                            <th data-sort="string">ASIN</th>
+                            <th data-sort="string">SKU</th>
+                            <th data-sort="string">Produktname</th>
+                            <th data-sort="number" style="text-align: center;">Bestand</th>
+                            <th data-sort="string" style="text-align: center;">Buybox</th>
+                            <th data-sort="currency">Min Preis</th>
+                            <th data-sort="currency">Max Preis</th>
+                            <th data-sort="currency">Akt. Preis</th>
+                            <th style="text-align: right; cursor: default;">Aktion</th>
+                        </tr>
+                    </thead>
+                    <tbody id="productsTbody"></tbody>
+                </table>
+            </div>
 
         <?php endif; ?>
     </div>
 
     <script>
-        // Table filtering script
         const searchInput = document.getElementById('tableSearchInput');
         const filterBuybox = document.getElementById('filterBuybox');
         const filterStock = document.getElementById('filterStock');
         const filterLimit = document.getElementById('filterLimit');
-        const rows = document.querySelectorAll('.product-row');
+        const table = document.getElementById('productsTable');
+        const tbody = document.getElementById('productsTbody');
+        const loadingState = document.getElementById('loadingState');
+        const noDataMessage = document.getElementById('noDataMessage');
+        const dataError = document.getElementById('dataError');
+        const tableWrap = document.getElementById('tableWrap');
+        const statTotalEl = document.getElementById('statTotal');
+        const statInBBEl = document.getElementById('statInBB');
+        const statOutStockEl = document.getElementById('statOutStock');
+
+        const currentMarketplaceCode = <?php echo json_encode($current_marketplace_code); ?>;
+        const marketplacesData = <?php echo json_encode($marketplaces); ?>;
+        const numberFormatter = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        function setHidden(element, hidden) {
+            if (!element) return;
+            if (hidden) {
+                element.setAttribute('hidden', 'hidden');
+            } else {
+                element.removeAttribute('hidden');
+            }
+        }
+
+        function getRows() {
+            return tbody ? Array.from(tbody.querySelectorAll('.product-row')) : [];
+        }
 
         function applyFilters() {
             const searchText = searchInput ? searchInput.value.toLowerCase() : '';
@@ -708,10 +669,9 @@ foreach ($asins_for_country as $item) {
             const stockFilter = filterStock ? filterStock.value : 'all';
             const limitFilter = filterLimit ? filterLimit.value : 'all';
 
-            rows.forEach(row => {
+            getRows().forEach(row => {
                 let show = true;
 
-                // 1. Search text filter
                 if (searchText) {
                     const text = row.textContent.toLowerCase();
                     if (!text.includes(searchText)) {
@@ -719,13 +679,12 @@ foreach ($asins_for_country as $item) {
                     }
                 }
 
-                // 2. Buybox filter
                 if (show && bbFilter !== 'all') {
                     const bbStatus = row.getAttribute('data-bb');
-                    
+
                     if (bbFilter === 'ja' && bbStatus !== 'ja') show = false;
                     if (bbFilter === 'nein' && bbStatus !== 'nein') show = false;
-                    
+
                     if (bbFilter === 'potential') {
                         if (bbStatus === 'ja') {
                             show = false;
@@ -733,24 +692,21 @@ foreach ($asins_for_country as $item) {
                             const minPreis = parseFloat(row.getAttribute('data-min'));
                             const maxPreis = parseFloat(row.getAttribute('data-max'));
                             const bbPriceRaw = row.getAttribute('data-bbprice');
-                            
+
                             if (bbPriceRaw === '') {
-                                show = false; // missing data
+                                show = false;
                             } else {
                                 const bp = parseFloat(bbPriceRaw);
                                 if (isNaN(bp) || isNaN(minPreis) || isNaN(maxPreis)) {
                                     show = false;
-                                } else {
-                                    if (bp < minPreis || bp > maxPreis) {
-                                        show = false;
-                                    }
+                                } else if (bp < minPreis || bp > maxPreis) {
+                                    show = false;
                                 }
                             }
                         }
                     }
                 }
 
-                // 3. Stock filter
                 if (show && stockFilter !== 'all') {
                     const stock = parseInt(row.getAttribute('data-stock'), 10) || 0;
                     if (stockFilter === 'instock' && stock <= 0) show = false;
@@ -758,11 +714,10 @@ foreach ($asins_for_country as $item) {
                     if (stockFilter === 'outstock' && stock > 0) show = false;
                 }
 
-                // 4. Limit filter
                 if (show && limitFilter !== 'all') {
                     const atMin = row.getAttribute('data-at-min');
                     const atMax = row.getAttribute('data-at-max');
-                    
+
                     if (limitFilter === 'min' && atMin !== '1') show = false;
                     if (limitFilter === 'max' && atMax !== '1') show = false;
                 }
@@ -776,33 +731,28 @@ foreach ($asins_for_country as $item) {
         if (filterStock) filterStock.addEventListener('change', applyFilters);
         if (filterLimit) filterLimit.addEventListener('change', applyFilters);
 
-        // Sorting Logic
-        const table = document.getElementById('productsTable');
-        if (table) {
+        if (table && tbody) {
             const headers = table.querySelectorAll('th[data-sort]');
-            const tbody = table.querySelector('tbody');
 
             headers.forEach((header, index) => {
                 header.addEventListener('click', () => {
                     const type = header.getAttribute('data-sort');
                     const isAscending = header.classList.contains('sort-asc');
                     const direction = isAscending ? -1 : 1;
-                    
-                    // Clear all arrows
+
                     headers.forEach(h => {
                         h.classList.remove('sort-asc');
                         h.classList.remove('sort-desc');
                     });
-                    
-                    // Set new arrow
+
                     header.classList.add(isAscending ? 'sort-desc' : 'sort-asc');
 
-                    const rowsArray = Array.from(tbody.querySelectorAll('tr.product-row'));
+                    const rowsArray = getRows();
 
                     rowsArray.sort((rowA, rowB) => {
                         const maxColIndex = rowA.children.length - 1;
-                        if(index > maxColIndex) return 0;
-                        
+                        if (index > maxColIndex) return 0;
+
                         let cellA = rowA.children[index].textContent.trim();
                         let cellB = rowB.children[index].textContent.trim();
 
@@ -814,37 +764,265 @@ foreach ($asins_for_country as $item) {
                             const valA = parseFloat(cellA.replace(/[^0-9,.-]+/g, '').replace(',', '.')) || 0;
                             const valB = parseFloat(cellB.replace(/[^0-9,.-]+/g, '').replace(',', '.')) || 0;
                             return (valA - valB) * direction;
-                        } else {
-                            return cellA.localeCompare(cellB, 'de', { numeric: true }) * direction;
                         }
+                        return cellA.localeCompare(cellB, 'de', { numeric: true }) * direction;
                     });
 
-                    // Re-append sorted rows
                     rowsArray.forEach(row => tbody.appendChild(row));
                 });
             });
         }
 
-        // Marketplace Switching Logic
+        function currencySymbolFromCode(code) {
+            if (code === 'GBP') return '£';
+            if (code === 'SEK') return 'kr';
+            return '€';
+        }
+
+        function formatMoney(value, currencySymbol) {
+            if (!Number.isFinite(value)) return '-';
+            return numberFormatter.format(value) + ' ' + currencySymbol;
+        }
+
+        function createBadge(text, className, title) {
+            const span = document.createElement('span');
+            span.className = 'badge ' + className;
+            span.textContent = text;
+            if (title) span.title = title;
+            return span;
+        }
+
+        function buildRow(item, currencySymbol) {
+            const tr = document.createElement('tr');
+            tr.className = 'product-row';
+
+            const asin = item.ASIN || '';
+            const sku = item.sku || '';
+            const name = item.artikelname || '';
+            const minPreis = parseFloat(item.min_preis);
+            const maxPreis = parseFloat(item.max_preis);
+            const stepSmall = parseFloat(item.stepsize_small);
+
+            let stockVal = 0;
+            let stockPure = 0;
+            let stockClass = 'badge-red';
+
+            if (item.stock_data) {
+                stockVal = parseInt(item.stock_data.real, 10) || 0;
+                stockPure = parseInt(item.stock_data.pure, 10) || 0;
+                if (stockVal > 10) {
+                    stockClass = 'badge-green';
+                } else if (stockVal > 0) {
+                    stockClass = 'badge-yellow';
+                }
+            }
+
+            let bbStatus = 'Unbekannt';
+            let bbClass = 'badge-gray';
+            let eigenerPreisFloat = null;
+            let eigenerPreisStr = '-';
+            let bbPrice = '';
+
+            if (item.buybox_data) {
+                const isWinner = String(item.buybox_data.isWinner ?? '').trim().toLowerCase();
+                if (isWinner === 'ja' || isWinner === '1' || isWinner === 'true') {
+                    bbStatus = 'Ja';
+                    bbClass = 'badge-green';
+                } else if (isWinner === 'nein' || isWinner === '0' || isWinner === 'false') {
+                    bbStatus = 'Nein';
+                    bbClass = 'badge-red';
+                }
+
+                const ownPrice = parseFloat(item.buybox_data.eigenerpreis);
+                if (Number.isFinite(ownPrice)) {
+                    eigenerPreisFloat = ownPrice;
+                    eigenerPreisStr = formatMoney(ownPrice, currencySymbol);
+                }
+
+                const bbPriceRaw = item.buybox_data.buyboxPreis;
+                if (bbPriceRaw !== null && bbPriceRaw !== undefined && bbPriceRaw !== '') {
+                    bbPrice = bbPriceRaw;
+                }
+            }
+
+            let minClass = 'badge-gray';
+            let maxClass = 'badge-gray';
+            let atMin = 0;
+            let atMax = 0;
+
+            if (Number.isFinite(eigenerPreisFloat) && Number.isFinite(minPreis) && Number.isFinite(maxPreis) && Number.isFinite(stepSmall)) {
+                if (Math.abs(eigenerPreisFloat - minPreis) <= stepSmall + 0.005) {
+                    minClass = 'badge-yellow';
+                    atMin = 1;
+                }
+                if (Math.abs(eigenerPreisFloat - maxPreis) <= stepSmall + 0.005) {
+                    maxClass = 'badge-green';
+                    atMax = 1;
+                }
+            }
+
+            tr.dataset.bb = bbStatus.toLowerCase();
+            tr.dataset.stock = String(stockVal);
+            tr.dataset.min = Number.isFinite(minPreis) ? String(minPreis) : '';
+            tr.dataset.max = Number.isFinite(maxPreis) ? String(maxPreis) : '';
+            tr.dataset.bbprice = bbPrice !== '' ? String(bbPrice) : '';
+            tr.dataset.atMin = String(atMin);
+            tr.dataset.atMax = String(atMax);
+
+            const asinTd = document.createElement('td');
+            const asinSpan = document.createElement('span');
+            asinSpan.className = 'asin-text';
+            asinSpan.textContent = asin;
+            asinTd.appendChild(asinSpan);
+
+            const skuTd = document.createElement('td');
+            const skuSpan = document.createElement('span');
+            skuSpan.className = 'sku-text';
+            skuSpan.textContent = sku;
+            skuTd.appendChild(skuSpan);
+
+            const nameTd = document.createElement('td');
+            nameTd.className = 'item-title';
+            nameTd.title = name;
+            nameTd.textContent = name;
+
+            const stockTd = document.createElement('td');
+            stockTd.style.textAlign = 'center';
+            const stockLink = document.createElement('a');
+            stockLink.href = 'bestandsabweichungen_historie.php?asin=' + encodeURIComponent(asin);
+            stockLink.style.textDecoration = 'none';
+            stockLink.appendChild(createBadge(String(stockVal), stockClass, 'Roher Lagerbestand: ' + stockPure));
+            stockTd.appendChild(stockLink);
+
+            const bbTd = document.createElement('td');
+            bbTd.style.textAlign = 'center';
+            bbTd.appendChild(createBadge(bbStatus, bbClass));
+
+            const minTd = document.createElement('td');
+            const minTitle = atMin ? 'Aktueller Preis liegt an der Min-Grenze!' : '';
+            minTd.appendChild(createBadge(formatMoney(minPreis, currencySymbol), minClass, minTitle));
+
+            const maxTd = document.createElement('td');
+            const maxTitle = atMax ? 'Aktueller Preis liegt an der Max-Grenze!' : '';
+            maxTd.appendChild(createBadge(formatMoney(maxPreis, currencySymbol), maxClass, maxTitle));
+
+            const priceTd = document.createElement('td');
+            priceTd.appendChild(createBadge(eigenerPreisStr, 'badge-blue'));
+
+            const actionTd = document.createElement('td');
+            actionTd.style.textAlign = 'right';
+            const actionLink = document.createElement('a');
+            actionLink.href = 'results.php?country=' + encodeURIComponent(currentMarketplaceCode) + '&asin=' + encodeURIComponent(asin);
+            actionLink.className = 'action-link';
+            actionLink.innerHTML = 'Bearbeiten &rarr;';
+            actionTd.appendChild(actionLink);
+
+            tr.appendChild(asinTd);
+            tr.appendChild(skuTd);
+            tr.appendChild(nameTd);
+            tr.appendChild(stockTd);
+            tr.appendChild(bbTd);
+            tr.appendChild(minTd);
+            tr.appendChild(maxTd);
+            tr.appendChild(priceTd);
+            tr.appendChild(actionTd);
+
+            return tr;
+        }
+
+        function updateStats(stats, items) {
+            let total = Number.isFinite(stats?.total) ? stats.total : items.length;
+            let inBB = Number.isFinite(stats?.in_bb) ? stats.in_bb : 0;
+            let outStock = Number.isFinite(stats?.out_stock) ? stats.out_stock : 0;
+
+            if (!Number.isFinite(stats?.in_bb) || !Number.isFinite(stats?.out_stock)) {
+                inBB = 0;
+                outStock = 0;
+                items.forEach(item => {
+                    if (item.buybox_data) {
+                        const isWinner = String(item.buybox_data.isWinner ?? '').trim().toLowerCase();
+                        if (isWinner === 'ja' || isWinner === '1' || isWinner === 'true') inBB++;
+                    }
+                    if (item.stock_data && (parseInt(item.stock_data.real, 10) || 0) <= 0) {
+                        outStock++;
+                    }
+                });
+            }
+
+            if (statTotalEl) statTotalEl.textContent = total;
+            if (statInBBEl) statInBBEl.textContent = inBB;
+            if (statOutStockEl) statOutStockEl.textContent = outStock;
+        }
+
+        async function loadData() {
+            if (!currentMarketplaceCode || !tbody) return;
+
+            setHidden(loadingState, false);
+            setHidden(tableWrap, true);
+            setHidden(noDataMessage, true);
+            setHidden(dataError, true);
+
+            try {
+                // Fetch to the current file with data mode to avoid relying on external files
+                const response = await fetch('?country=' + encodeURIComponent(currentMarketplaceCode) + '&mode=data', {
+                    headers: { 'Accept': 'application/json' }
+                });
+                const payload = await response.json();
+
+                if (!response.ok || payload.error) {
+                    throw new Error(payload.error || 'Daten konnten nicht geladen werden.');
+                }
+
+                const items = Array.isArray(payload.items) ? payload.items : [];
+                const currencyCode = payload.currencyCode || (marketplacesData[currentMarketplaceCode] ? marketplacesData[currentMarketplaceCode].currencyCode : 'EUR');
+                const currencySymbol = currencySymbolFromCode(currencyCode);
+
+                tbody.innerHTML = '';
+                items.forEach(item => tbody.appendChild(buildRow(item, currencySymbol)));
+
+                updateStats(payload.stats || {}, items);
+
+                if (items.length === 0) {
+                    setHidden(noDataMessage, false);
+                    setHidden(tableWrap, true);
+                } else {
+                    setHidden(tableWrap, false);
+                }
+
+                applyFilters();
+            } catch (err) {
+                if (dataError) {
+                    dataError.textContent = err.message || 'Daten konnten nicht geladen werden.';
+                    setHidden(dataError, false);
+                }
+            } finally {
+                setHidden(loadingState, true);
+            }
+        }
+
+        // Initialize fetching on page load
+        loadData();
+
         const marketplaceSelect = document.getElementById('marketplaceSelect');
         const currentMarketplaceFlag = document.getElementById('currentMarketplaceFlag');
-        const marketplacesData = <?php echo json_encode($marketplaces); ?>;
 
-        marketplaceSelect.addEventListener('change', function() {
-            const selectedUrl = this.value;
-            let selectedCode = '';
-            for (const code in marketplacesData) {
-                 if (marketplacesData[code].url === selectedUrl) {
-                    selectedCode = code;
-                    break;
-                 }
-            }
-            if (selectedCode && marketplacesData[selectedCode] && marketplacesData[selectedCode].img) {
-                currentMarketplaceFlag.src = marketplacesData[selectedCode].img;
-                currentMarketplaceFlag.alt = selectedCode + " Flag";
-            }
-            location.href = selectedUrl;
-        });
+        if (marketplaceSelect) {
+            marketplaceSelect.addEventListener('change', function() {
+                const selectedUrl = this.value;
+                let selectedCode = '';
+                for (const code in marketplacesData) {
+                    if (marketplacesData[code].url === selectedUrl) {
+                        selectedCode = code;
+                        break;
+                    }
+                }
+                if (selectedCode && marketplacesData[selectedCode] && marketplacesData[selectedCode].img && currentMarketplaceFlag) {
+                    currentMarketplaceFlag.src = marketplacesData[selectedCode].img;
+                    currentMarketplaceFlag.alt = selectedCode + ' Flag';
+                }
+                location.href = selectedUrl;
+            });
+        }
     </script>
 </body>
 </html>
