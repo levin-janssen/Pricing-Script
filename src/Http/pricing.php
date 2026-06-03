@@ -3,6 +3,17 @@ $scriptStartTime = microtime(true);
 
 ini_set('default_charset',  'UTF-8');
 ini_set('error_log', dirname(__DIR__, 2) . '/error.log'); 
+$logFile = dirname(__DIR__, 2) . '/error.log';
+$maxLines = 100000; // Maximale Zeilenanzahl, die behalten werden soll
+
+if (file_exists($logFile)) {
+    if (filesize($logFile) > 5 * 1024 * 1024) { 
+        $tempFile = $logFile . '.tmp';
+        exec(sprintf('tail -n %d %s > %s', $maxLines, escapeshellarg($logFile), escapeshellarg($tempFile)));
+        rename($tempFile, $logFile);
+        chmod($logFile, 0640);
+    }
+}
 
 require_once __DIR__ . '/../Support/Logger.php';
 require_once __DIR__ . '/../Services/sp_api_functions.php';
