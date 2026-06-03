@@ -20,6 +20,7 @@ require_once __DIR__ . '/../Services/sp_api_functions.php';
 require_once __DIR__ . '/../Services/AmazonFeedBuilder.php';
 require_once __DIR__ . '/../Services/ManoManoFeedBuilder.php';
 require_once dirname(__DIR__, 2) . '/config/marketplaces.php';
+require_once dirname(__DIR__, 2) . '/config/db_connection.php'; // <-- NEU
 
 $currentRunId = substr(md5(microtime()), 0, 6);
 Logger::setRunId($currentRunId);
@@ -53,9 +54,8 @@ if (is_dir($logDir)) {
 }
 
 $dbStartTime = microtime(true);
-$dbConnection = new PDO('mysql:dbname=tric4calc;host=127.0.0.1;', 'root', '***REMOVED***');
-$dbConnection->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
-$dbConnection->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_WARNING);
+// Nutze die global definierte Verbindung aus der db_connection.php
+$dbConnection = $dbConnectionTric4Calc;
 
 Logger::performance("Database Connections Established", microtime(true) - $dbStartTime);
 
@@ -544,9 +544,7 @@ function logPlannedAction($dbConnection, $produktid, $neuerPreis, $niedrigsterPr
 }
 
 function preloadTricomaStocks(array $asinList): array {
-    $dbConnectionTric = new PDO('mysql:dbname=***REMOVED***;host=***REMOVED***;', '***REMOVED***', '***REMOVED***');
-    $dbConnectionTric->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
-    $dbConnectionTric->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); 
+    global $dbConnectionTric; // <-- NEU: Globale Verbindung nutzen
     
     $result = [];
     
