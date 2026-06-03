@@ -54,7 +54,7 @@ if (isset($_GET['ajax_lookup'])) {
                     ]
                 ]);
             } else {
-                // Strategie B: Fallback auf Tricoma Hauptdatenbank (FIX: Parameter-Duplikation entfernt)
+                // Strategie B: Fallback auf Tricoma Hauptdatenbank
                 $stmtTric = $dbConnectionTric->prepare("
                     SELECT p.ID as id, p.titel as artikelname,
                            (SELECT wert1 FROM produkte_felder_werte WHERE produktid = p.ID AND feldid = 44 AND wert1 != '' LIMIT 1) as sku,
@@ -128,7 +128,7 @@ if (isset($_GET['ajax_lookup'])) {
         exit;
     }
 
-    // 3. Asynchroner Bestell-Fetch (FIX: Spaltenname auf 'bestelldatum' angepasst)
+    // 3. Asynchroner Bestell-Fetch (Mit richtigem Tabellen-Join auf bestelldatum)
     if ($type === 'orders') {
         $sku = trim(strip_tags((string)($_GET['sku'] ?? '')));
         $asin = trim(strip_tags((string)($_GET['asin'] ?? '')));
@@ -176,19 +176,22 @@ if (isset($_GET['ajax_lookup'])) {
         exit;
     }
 
-    // 4. Asynchroner Absatz-Fetch (FIX: Spaltenname auf 'bestelldatum' angepasst)
+    // 4. Asynchroner Absatz-Fetch (FIX: Genau wie in report.php über T2.bestelldatum filtern)
+    // 4. Asynchroner Absatz-Fetch (Korrektur: Filterung wie in report.php)
     if ($type === 'sales') {
         $sku = trim(strip_tags((string)($_GET['sku'] ?? '')));
         $asin = trim(strip_tags((string)($_GET['asin'] ?? '')));
         try {
-            // Falls bestelldatum als Unix-Timestamp gefiltert wird, hier dynamisch anpassen
-            $date_limit = (new DateTime())->modify("-30 days")->getTimestamp();
+            // Wir berechnen das Startdatum vor 30 Tagen im SQL-freundlichen Format
+            $date_start = (new DateTime())->modify("-30 days")->format('Y-m-d H:i:s');
             
             $stmt = $dbConnectionTric->prepare("
-                SELECT SUM(T1.anzahl) AS total_quantity, SUM(T1.einzelpreis * T1.anzahl) AS total_revenue_pre_vat
+                SELECT SUM(T1.anzahl) AS total_quantity, 
+                       SUM(T1.einzelpreis * T1.anzahl) AS total_revenue_pre_vat
                 FROM bestellungen_positionen AS T1
                 JOIN bestellungen AS T2 ON T2.id = T1.bestellungsid
-                WHERE T2.bestelldatum > :date_limit AND T1.produktid = (
+                WHERE T2.bestelldatum > :date_start
+                  AND T1.produktid = (
                     SELECT produktid 
                     FROM produkte_felder_werte 
                     WHERE (feldid = 44 AND wert1 = :sku AND wert1 != '') 
@@ -196,8 +199,33 @@ if (isset($_GET['ajax_lookup'])) {
                     LIMIT 1
                 )
             ");
-            $stmt->execute(['date_limit' => $date_limit, 'sku' => $sku, 'asin' => $asin]);
+            $stmt->execute([
+                'date_start' => $date_start,
+                'sku'      => $sku,
+                'asin'     => $asin
+            ]);
             $res = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            // Wenn Tricoma bestelldatum als Timestamp speichert, schlägt der String-Vergleich oben fehl.
+            // Falls das Ergebnis 0 ist, versuchen wir einen Fallback auf Unix-Timestamp
+            if ((int)($res['total_quantity'] ?? 0) === 0) {
+                $ts_start = strtotime($date_start);
+                $stmtFallback = $dbConnectionTric->prepare("
+                    SELECT SUM(T1.anzahl) AS total_quantity, SUM(T1.einzelpreis * T1.anzahl) AS total_revenue_pre_vat
+                    FROM bestellungen_positionen AS T1
+                    JOIN bestellungen AS T2 ON T2.id = T1.bestellungsid
+                    WHERE T2.bestelldatum > :ts_start
+                      AND T1.produktid = (
+                        SELECT produktid 
+                        FROM produkte_felder_werte 
+                        WHERE (feldid = 44 AND wert1 = :sku AND wert1 != '') 
+                           OR (feldid = 57 AND wert1 = :asin AND wert1 != '')
+                        LIMIT 1
+                    )
+                ");
+                $stmtFallback->execute(['ts_start' => $ts_start, 'sku' => $sku, 'asin' => $asin]);
+                $res = $stmtFallback->fetch(PDO::FETCH_ASSOC);
+            }
 
             $qty = (int)($res['total_quantity'] ?? 0);
             $rev = (float)($res['total_revenue_pre_vat'] ?? 0) * 1.19;
@@ -380,6 +408,7 @@ require_once APP_ROOT . '/config/marketplaces.php';
             border-radius: var(--radius);
             box-shadow: var(--shadow);
             border: 1px solid var(--stroke);
+            margin-bottom: 24px;
         }
         .search-bar-row {
             display: flex;
