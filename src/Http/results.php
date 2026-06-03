@@ -579,7 +579,7 @@ if (empty($db_error) && !empty($selectedAsin)) {
         /* --- Chart Area (Full Width) --- */
         .chart-container {
             width: 100%;
-            height: 500px; /* Made slightly taller for better readability */
+            height: 400px; /* Made slightly taller for better readability */
             position: relative;
             margin-bottom: 24px;
         }
@@ -690,7 +690,6 @@ if (empty($db_error) && !empty($selectedAsin)) {
 
             <div class="hero">
                 <div class="hero-text">
-                    <p class="eyebrow">Produktdetails <?= htmlspecialchars($current_marketplace_name) ?></p>
                     <h1>
                         <img class="flag-icon" src="img/<?= htmlspecialchars($current_marketplace_code) ?>.png" alt="<?= htmlspecialchars($current_marketplace_code) ?>">
                         <a target="_blank" href="https://www.amazon.de/dp/<?= htmlspecialchars($selectedAsin ?: 'N/A') ?>">
