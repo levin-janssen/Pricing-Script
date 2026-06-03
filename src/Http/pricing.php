@@ -545,8 +545,21 @@ function logPlannedAction($dbConnection, $produktid, $neuerPreis, $niedrigsterPr
 }
 
 function preloadTricomaStocks(array $asinList): array {
-    global $dbConnectionTric; // <-- NEU: Globale Verbindung nutzen
+    global $dbConnectionTric; // <-- Globale Verbindung nutzen
     
+    // --- FIX: Check if the connection has dropped, and reconnect if necessary ---
+    if (@$dbConnectionTric->query("SELECT 1") === false) {
+        Logger::warning("Tricoma DB connection lost (server gone away). Reconnecting...");
+        $dbConnectionTric = new PDO(
+            'mysql:dbname=' . getenv('DB_NAME_TRIC') . ';host=' . getenv('DB_HOST_TRIC') . ';', 
+            getenv('DB_USER_TRIC'), 
+            getenv('DB_PASS_TRIC')
+        );
+        $dbConnectionTric->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+        $dbConnectionTric->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
+    }
+    // --------------------------------------------------------------------------
+
     $result = [];
     
     if (empty($asinList)) {
@@ -566,6 +579,14 @@ function preloadTricomaStocks(array $asinList): array {
         WHERE pfw.feldid = 57 AND pfw.wert1 IN ($placeholders)
         GROUP BY pfw.wert1
     ");
+    
+    // --- FIX: Safeguard to prevent fatal crash if statement fails to prepare ---
+    if ($stmtPure === false) {
+        Logger::error("Failed to prepare stmtPure in preloadTricomaStocks.");
+        return $result;
+    }
+    // -------------------------------------------------------------------------
+    
     $stmtPure->execute($asinList);
     while ($row = $stmtPure->fetch(PDO::FETCH_ASSOC)) {
         $asin = $row['asin'];
@@ -584,6 +605,14 @@ function preloadTricomaStocks(array $asinList): array {
           AND lief.versandart = ''
         GROUP BY pfw.wert1
     ");
+    
+    // --- FIX: Safeguard ---
+    if ($stmtOpen === false) {
+        Logger::error("Failed to prepare stmtOpen in preloadTricomaStocks.");
+        return $result;
+    }
+    // ----------------------
+
     $stmtOpen->execute($asinList);
     while ($row = $stmtOpen->fetch(PDO::FETCH_ASSOC)) {
         $asin = $row['asin'];
