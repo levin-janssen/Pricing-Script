@@ -4,6 +4,7 @@ ini_set('default_charset', 'UTF-8');
 mb_internal_encoding("UTF-8");
 
 require_once __DIR__ . '/../../config/db_connection.php';
+require_once __DIR__ . '/../../config/marketplaces.php';
 $pdo = $dbConnectionTric;
 
 $datum = $_GET["datum"] ?? date("d.m.Y");
@@ -25,10 +26,10 @@ $month_sum = array_sum(array_column($month_pkgs, 'Pakete'));
 
 // Base Order Statement
 $orderStmt = $pdo->prepare("
-    SELECT bp.einzelpreis, bp.steuer, bw.titel
+    SELECT bp.einzelpreis, bp.steuer, bw.titel, bp.kundennummer, kfa.wert2 AS land
     FROM bestellungen b
     JOIN (
-        SELECT bestellungsid, einzelpreis, steuer
+        SELECT bestellungsid, kundennummer, einzelpreis, steuer
         FROM bestellungen_positionen 
         WHERE produktid = (
             SELECT produktid 
@@ -38,11 +39,23 @@ $orderStmt = $pdo->prepare("
         ORDER BY datum DESC 
         LIMIT 3
     ) bp ON b.ID = bp.bestellungsid
+    LEFT JOIN kunden_felder_werte kfw ON kfw.kundennummer = bp.kundennummer AND kfw.feldid = 48
+    LEFT JOIN kunden_felder_auswahl kfa ON kfa.auswahlid = kfw.wert1 AND kfa.feldid = 48
     JOIN bestellungen_werbekennzeichen bw ON bw.ID = b.werbekennzeichen
     LIMIT 25
 ");
 
-function fetchTableData($pdo, $sql, $orderStmt) {
+function getMarketplaceLabel(?string $land, array $marketplaces): string {
+    $land = strtoupper(trim((string)$land));
+
+    if ($land === '') {
+        return 'Unbekannter Marktplatz';
+    }
+
+    return $land;
+}
+
+function fetchTableData($pdo, $sql, $orderStmt, array $marketplaces) {
     $data = [];
     $replacements = [
         '(Otto)' => '<img src="img/otto.png" alt="Otto" width="35" height="16" style="vertical-align: middle;">',
@@ -79,8 +92,9 @@ function fetchTableData($pdo, $sql, $orderStmt) {
             
             // Bruttopreis berechnen
             $bruttoPreis = (float)$item["einzelpreis"] * $steuerMultiplikator;
-            
-            $price = number_format($bruttoPreis, 2, ',', '') . "€ <span style='font-size:0.85em; color:var(--muted);'>(" . $item["titel"] . ")</span>";
+
+            $marketplaceLabel = getMarketplaceLabel($item['land'] ?? null, $marketplaces);
+            $price = number_format($bruttoPreis, 2, ',', '') . "€ <span style='font-size:0.85em; color:var(--muted);'>(" . htmlspecialchars($item["titel"]) . ")</span> <span style='display:inline-block; margin-left:6px; padding:1px 6px; border-radius:999px; background:#eff6ff; color:var(--primary); font-size:0.78em; font-weight:600;'>" . htmlspecialchars($marketplaceLabel) . "</span>";
             $orders[] = str_replace(array_keys($replacements), array_values($replacements), $price);
         }
         while (count($orders) < 3) $orders[] = "";
@@ -116,8 +130,8 @@ $vendorSql = "
     GROUP BY lp.produktid ORDER BY SUM(lp.anzahl) DESC
 ";
 
-$positionen = fetchTableData($pdo, $mainSql, $orderStmt);
-$vendor = fetchTableData($pdo, $vendorSql, $orderStmt);
+$positionen = fetchTableData($pdo, $mainSql, $orderStmt, $marketplaces);
+$vendor = fetchTableData($pdo, $vendorSql, $orderStmt, $marketplaces);
 ?>
 <!DOCTYPE html>
 <html lang="de">

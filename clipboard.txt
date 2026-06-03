@@ -1,4 +1,4 @@
-SELECT kfw.wert1 AS land, t1.kundennummer, t1.produktid
+SELECT kfa.wert2 AS land, t1.kundennummer, t1.produktid
 FROM kunden_felder_werte kfw
 JOIN (
     SELECT bestellungsid, kundennummer, einzelpreis, produktid
@@ -11,37 +11,6 @@ JOIN (
     ORDER BY datum DESC 
     LIMIT 3
 ) t1 ON t1.kundennummer = kfw.kundennummer
-WHERE kfw.feldid = 48
-
-
-SELECT kk.titel, t1.produktid, t1.bestellungsid, t1.kundennummer
-FROM kunden_kat_zuordnung kz
-JOIN (
-    SELECT bestellungsid, kundennummer, einzelpreis, produktid
-    FROM bestellungen_positionen 
-    WHERE produktid = (
-        SELECT produktid 
-        FROM produkte_felder_werte 
-        WHERE feldid = 44 AND wert1 = '8-21-2-1141'
-    ) 
-    ORDER BY datum DESC 
-    LIMIT 3
-) t1 ON t1.kundennummer = kz.kundennummer
-JOIN kunden_kat kk ON kk.ID = kz.kategorie
-
-
-SELECT bp.einzelpreis, bw.titel, bp.bestellungsid
-    FROM bestellungen b
-    JOIN (
-        SELECT bestellungsid, einzelpreis
-        FROM bestellungen_positionen 
-        WHERE produktid = (
-            SELECT produktid 
-            FROM produkte_felder_werte 
-            WHERE feldid = 44 AND wert1 = '8-21-37-5515'
-        ) 
-        ORDER BY datum DESC 
-        LIMIT 3
-    ) bp ON b.ID = bp.bestellungsid
-    JOIN bestellungen_werbekennzeichen bw ON bw.ID = b.werbekennzeichen
-    LIMIT 25
+JOIN kunden_felder_auswahl kfa ON kfa.auswahlid = kfw.wert1
+WHERE kfa.feldid = 48
+AND kfw.feldid = 48
