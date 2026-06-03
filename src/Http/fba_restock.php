@@ -342,11 +342,11 @@ function h(string $value): string {
             <div class="preset-row">
                 <span style="font-size: 0.85rem; font-weight: 600; color: var(--muted); margin-top: 6px; margin-right: 10px;">Schnellfilter:</span>
                 
-                <button type="button" class="btn-preset" onclick="applyPreset(1, 'amazon', 'in_stock', 6, 'asc', 'all')">
+                <button type="button" class="btn-preset" onclick="applyPreset(12, 'amazon', 'in_stock', 6, 'asc', 'all')">
                     🔥 Reichweite
                 </button>
                 
-                <button type="button" class="btn-preset" onclick="applyPreset(1, 'amazon', 'all', 3, 'desc', 'under_30')">
+                <button type="button" class="btn-preset" onclick="applyPreset(12, 'amazon', 'all', 3, 'desc', 'under_30')">
                     ⚠️ Kritisch (0 - 30 Tage)
                 </button>
                 
