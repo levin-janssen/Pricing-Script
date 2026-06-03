@@ -5,7 +5,8 @@ require_once APP_ROOT . '/config/db_connection.php';
 require_once APP_ROOT . '/src/Services/ManoManoFeedBuilder.php';
 require_once APP_ROOT . '/src/Services/AmazonFeedBuilder.php';
 
-$sku_to_search = $_GET['sku'] ?? '10-2-14-441'; 
+// 1. Default-SKU entfernt. Initialer State ist nun leer.
+$sku_to_search = $_GET['sku'] ?? ''; 
 $time_period = $_GET['time_period'] ?? '7';
 $source = $_GET['source'] ?? 'all';
 
@@ -134,6 +135,7 @@ tbody td{padding:10px;border-bottom:1px solid #eef3f7}
 th.sort-asc::after{content:' ▲';font-size:11px;color:var(--muted)}
 th.sort-desc::after{content:' ▼';font-size:11px;color:var(--muted)}
 .no-data{padding:14px;background:#fff4f4;border-radius:8px;color:#7b1111}
+.waiting-data{padding:40px;text-align:center;color:var(--muted);background:transparent;border:2px dashed #e5e7eb;border-radius:12px;margin-top:20px;}
 @media (max-width:700px){.control-panel{flex-direction:column}.table-controls{flex-direction:column;align-items:flex-start}}
 </style>
 </head>
@@ -146,7 +148,7 @@ th.sort-desc::after{content:' ▼';font-size:11px;color:var(--muted)}
   <form method="GET" action="" style="display:flex;flex:1;gap:12px;flex-wrap:wrap">
    <div class="form-group">
     <label for="sku">SKU</label>
-    <input id="sku" name="sku" type="text" value="<?php echo htmlspecialchars($sku_to_search, ENT_QUOTES); ?>">
+    <input id="sku" name="sku" type="text" placeholder="z. B. 10-2-14-441" value="<?php echo htmlspecialchars($sku_to_search, ENT_QUOTES); ?>">
    </div>
    <div class="form-group">
     <label for="time_period">Zeitraum</label>
@@ -165,116 +167,111 @@ th.sort-desc::after{content:' ▼';font-size:11px;color:var(--muted)}
     </select>
    </div>
    <div style="display:flex;align-items:flex-end">
-    <button type="submit">Bericht aktualisieren</button>
+    <button type="submit">Bericht abrufen</button>
    </div>
   </form>
  </div>
 
 <?php
-if ($dbConnectionTric instanceof PDO) {
-  $data = getProductData($dbConnectionTric, $sku_to_search, (int)$time_period, $source);
-  if ($data) {
-    // 🔹 NEW: Try to fetch title + image if ASIN available
-    $productMeta = null;
-    if (!empty($data['asin'])) {
-      $productMeta = getProductTitleAndImage($data['asin']);
-    }
-    if ($productMeta) {
-      echo '<div class="card" style="display:flex;align-items:center;gap:16px">';
-      if ($productMeta['image']) {
-        echo '<img src="' . htmlspecialchars($productMeta['image'], ENT_QUOTES) . '" alt="Product Image" style="max-width:120px;border-radius:8px">';
-      }
-      echo '<div>';
-      echo '<h2 style="margin:0 0 6px 0">' . htmlspecialchars($productMeta['title'], ENT_QUOTES) . '</h2>';
-      echo '<p style="margin:0;color:#666">ASIN: ' . htmlspecialchars($data['asin'], ENT_QUOTES) . '</p>';
-      echo '<p style="margin:0;color:#666"> Produkt-ID: ' . htmlspecialchars((string)$data['product_id'], ENT_QUOTES) . '</p>';
-      echo '<p style="margin:0;color:#666">SKU: ' . htmlspecialchars($data['sku'], ENT_QUOTES) . '</p>';
-      echo '</div></div>';
-    }
-
-    $source_title = ($source === 'amazon') ? 'Amazon' : 'Alle';
-    $summary = $data['sales_summary'];
-
-    echo '<div class="card">';
-    echo "<h2 style='margin:0 0 8px 0'>{$source_title}-Verkaufsübersicht (Letzte {$data['days']} Tage)</h2>";
-    if ($summary && ($summary['total_quantity'] ?? 0) > 0) {
-      $rev_vat = ($summary['total_revenue_pre_vat'] ?? 0) * 1.19;
-      $avg_price = $rev_vat / max(1, (int)$summary['total_quantity']);
-      echo '<div class="summary-grid">';
-      echo '<div class="summary-item"><div class="label">Verkaufte Menge</div><div class="value">' . (int)$summary['total_quantity'] . '</div></div>';
-      echo '<div class="summary-item"><div class="label">Umsatz (inkl. MwSt.)</div><div class="value">' . number_format($rev_vat, 2, ',', '.') . ' €</div></div>';
-      echo '<div class="summary-item"><div class="label">Durchschnittspreis (inkl. MwSt.)</div><div class="value">' . number_format($avg_price, 2, ',', '.') . ' €</div></div>';
-      echo '</div>';
-    } else {
-      echo '<p class="no-data">Keine Verkaufsdaten für den ausgewählten Zeitraum/die Quelle verfügbar.</p>';
-    }
+// 2. Logik-Gate: Nur ausführen, wenn eine SKU explizit eingegeben wurde
+if (empty($sku_to_search)) {
+    echo '<div class="waiting-data">';
+    echo '<h3>Bereit für Ihre Abfrage</h3>';
+    echo '<p>Bitte geben Sie eine SKU ein, um den Bericht zu laden.</p>';
     echo '</div>';
-
-    // Orders table
-    echo '<div class="card">';
-    echo "<h2 style='margin:0 0 8px 0'>Letzte {$source_title}-Verkäufe</h2>";
-
-    if (!empty($data['recent_orders'])) {
-      echo '<div class="table-controls">';
-      echo '<div class="left"><label for="rowLimit">Zeilen anzeigen</label>';
-      echo '<select id="rowLimit" aria-label="Zeilen anzeigen">';
-      echo '<option value="10">10</option>';
-      echo '<option value="25">25</option>';
-      echo '<option value="50">50</option>';
-      echo '<option value="100">100</option>';
-      echo '</select></div>';
-      echo '<div class="right" style="color:var(--muted);font-size:13px">Klicken Sie auf eine Spaltenüberschrift, um zu sortieren (aufsteigend/absteigend)</div>';
-      echo '</div>';
-
-      echo '<table id="ordersTable" aria-describedby="orders-desc"><thead><tr>';
-      // Types: Order ID -> string, Price -> number, Werb -> string, Date -> date
-      echo '<th data-type="string">Bestell-ID</th>';
-      echo '<th data-type="number">Preis (inkl. MwSt.)</th>';
-      echo '<th data-type="string">Plattform</th>';
-      echo '<th data-type="date">Datum</th>';
-      echo '</tr></thead><tbody>';
-
-      foreach ($data['recent_orders'] as $i => $order) {
-        $orderId = $order['bestellungsid'] ?? '';
-
-        // Price including VAT
-        $price_val = (float) ($order['einzelpreis'] ?? 0.0) * 1.19;
-        $price_sort = number_format($price_val, 2, '.', ''); // canonical
-        $price_display = number_format($price_val, 2, ',', '.');
-
-        // Werbekennzeichen
-        $werb = $order['werbekennzeichen'] ?? '';
-
-        // Date parsing: robust normalization
-        $raw_date = $order['datum'] ?? '';
-        $timestamp = normalizeToTimestamp($raw_date);
-        // display: use original raw if parsing failed; else show standardized Y-m-d H:i:s
-        $date_display = $timestamp ? date('Y-m-d H:i:s', $timestamp) : htmlspecialchars((string)$raw_date, ENT_QUOTES);
-
-        // Output row with data-sort attributes for each cell
-        echo '<tr data-original-index="' . (int)$i . '">';
-        // Order ID (string)
-        echo '<td data-sort="' . htmlspecialchars((string)$orderId, ENT_QUOTES) . '">' . htmlspecialchars((string)$orderId, ENT_QUOTES) . '</td>';
-        // Price (number canonical)
-        echo '<td data-sort="' . $price_sort . '">' . $price_display . ' €</td>';
-        // Werbekennzeichen (string)
-        echo '<td data-sort="' . htmlspecialchars((string)$werb, ENT_QUOTES) . '">' . htmlspecialchars((string)$werb, ENT_QUOTES) . '</td>';
-        // Date (timestamp numeric)
-        echo '<td data-sort="' . (int)$timestamp . '">' . htmlspecialchars($date_display, ENT_QUOTES) . '</td>';
-        echo '</tr>';
-      }
-
-      echo '</tbody></table>';
-    } else {
-      echo '<p class="no-data">Keine aktuellen Bestelldaten für dieses Produkt verfügbar.</p>';
-    }
-
-    echo '</div>'; // card end
-  } else {
-    echo '<p class="no-data">❌ Produkt nicht gefunden oder keine Daten verfügbar.</p>';
-  }
 } else {
-  echo '<p class="no-data">❌ Datenbankverbindung konnte nicht hergestellt werden.</p>';
+    if ($dbConnectionTric instanceof PDO) {
+      $data = getProductData($dbConnectionTric, $sku_to_search, (int)$time_period, $source);
+      if ($data) {
+        // External API Call - Dies kann den Page Load bei einer Suche blockieren
+        $productMeta = null;
+        if (!empty($data['asin'])) {
+          $productMeta = getProductTitleAndImage($data['asin']);
+        }
+        if ($productMeta) {
+          echo '<div class="card" style="display:flex;align-items:center;gap:16px">';
+          if ($productMeta['image']) {
+            echo '<img src="' . htmlspecialchars($productMeta['image'], ENT_QUOTES) . '" alt="Product Image" style="max-width:120px;border-radius:8px">';
+          }
+          echo '<div>';
+          echo '<h2 style="margin:0 0 6px 0">' . htmlspecialchars($productMeta['title'], ENT_QUOTES) . '</h2>';
+          echo '<p style="margin:0;color:#666">ASIN: ' . htmlspecialchars($data['asin'], ENT_QUOTES) . '</p>';
+          echo '<p style="margin:0;color:#666"> Produkt-ID: ' . htmlspecialchars((string)$data['product_id'], ENT_QUOTES) . '</p>';
+          echo '<p style="margin:0;color:#666">SKU: ' . htmlspecialchars($data['sku'], ENT_QUOTES) . '</p>';
+          echo '</div></div>';
+        }
+
+        $source_title = ($source === 'amazon') ? 'Amazon' : 'Alle';
+        $summary = $data['sales_summary'];
+
+        echo '<div class="card">';
+        echo "<h2 style='margin:0 0 8px 0'>{$source_title}-Verkaufsübersicht (Letzte {$data['days']} Tage)</h2>";
+        if ($summary && ($summary['total_quantity'] ?? 0) > 0) {
+          $rev_vat = ($summary['total_revenue_pre_vat'] ?? 0) * 1.19;
+          $avg_price = $rev_vat / max(1, (int)$summary['total_quantity']);
+          echo '<div class="summary-grid">';
+          echo '<div class="summary-item"><div class="label">Verkaufte Menge</div><div class="value">' . (int)$summary['total_quantity'] . '</div></div>';
+          echo '<div class="summary-item"><div class="label">Umsatz (inkl. MwSt.)</div><div class="value">' . number_format($rev_vat, 2, ',', '.') . ' €</div></div>';
+          echo '<div class="summary-item"><div class="label">Durchschnittspreis (inkl. MwSt.)</div><div class="value">' . number_format($avg_price, 2, ',', '.') . ' €</div></div>';
+          echo '</div>';
+        } else {
+          echo '<p class="no-data">Keine Verkaufsdaten für den ausgewählten Zeitraum/die Quelle verfügbar.</p>';
+        }
+        echo '</div>';
+
+        // Orders table
+        echo '<div class="card">';
+        echo "<h2 style='margin:0 0 8px 0'>Letzte {$source_title}-Verkäufe</h2>";
+
+        if (!empty($data['recent_orders'])) {
+          echo '<div class="table-controls">';
+          echo '<div class="left"><label for="rowLimit">Zeilen anzeigen</label>';
+          echo '<select id="rowLimit" aria-label="Zeilen anzeigen">';
+          echo '<option value="10">10</option>';
+          echo '<option value="25">25</option>';
+          echo '<option value="50">50</option>';
+          echo '<option value="100">100</option>';
+          echo '</select></div>';
+          echo '<div class="right" style="color:var(--muted);font-size:13px">Klicken Sie auf eine Spaltenüberschrift, um zu sortieren</div>';
+          echo '</div>';
+
+          echo '<table id="ordersTable" aria-describedby="orders-desc"><thead><tr>';
+          echo '<th data-type="string">Bestell-ID</th>';
+          echo '<th data-type="number">Preis (inkl. MwSt.)</th>';
+          echo '<th data-type="string">Plattform</th>';
+          echo '<th data-type="date">Datum</th>';
+          echo '</tr></thead><tbody>';
+
+          foreach ($data['recent_orders'] as $i => $order) {
+            $orderId = $order['bestellungsid'] ?? '';
+            $price_val = (float) ($order['einzelpreis'] ?? 0.0) * 1.19;
+            $price_sort = number_format($price_val, 2, '.', '');
+            $price_display = number_format($price_val, 2, ',', '.');
+            $werb = $order['werbekennzeichen'] ?? '';
+            $raw_date = $order['datum'] ?? '';
+            $timestamp = normalizeToTimestamp($raw_date);
+            $date_display = $timestamp ? date('Y-m-d H:i:s', $timestamp) : htmlspecialchars((string)$raw_date, ENT_QUOTES);
+
+            echo '<tr data-original-index="' . (int)$i . '">';
+            echo '<td data-sort="' . htmlspecialchars((string)$orderId, ENT_QUOTES) . '">' . htmlspecialchars((string)$orderId, ENT_QUOTES) . '</td>';
+            echo '<td data-sort="' . $price_sort . '">' . $price_display . ' €</td>';
+            echo '<td data-sort="' . htmlspecialchars((string)$werb, ENT_QUOTES) . '">' . htmlspecialchars((string)$werb, ENT_QUOTES) . '</td>';
+            echo '<td data-sort="' . (int)$timestamp . '">' . htmlspecialchars($date_display, ENT_QUOTES) . '</td>';
+            echo '</tr>';
+          }
+
+          echo '</tbody></table>';
+        } else {
+          echo '<p class="no-data">Keine aktuellen Bestelldaten für dieses Produkt verfügbar.</p>';
+        }
+
+        echo '</div>';
+      } else {
+        echo '<p class="no-data">❌ Produkt nicht gefunden oder keine Daten verfügbar.</p>';
+      }
+    } else {
+      echo '<p class="no-data">❌ Datenbankverbindung konnte nicht hergestellt werden.</p>';
+    }
 }
 ?>
 </div>
@@ -292,12 +289,10 @@ if ($dbConnectionTric instanceof PDO) {
   const headers = Array.from(table.tHead.querySelectorAll('th'));
   const rowLimitSelect = document.getElementById('rowLimit');
 
-  // Ensure original index exists for stable sort fallback
   rows.forEach((r, i) => {
    if (!r.dataset.originalIndex) r.dataset.originalIndex = i;
   });
 
-  // Load persisted state
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
   if (saved.rowLimit) {
    if (Array.from(rowLimitSelect.options).some(o => o.value === String(saved.rowLimit))) {
@@ -305,7 +300,6 @@ if ($dbConnectionTric instanceof PDO) {
    }
   }
 
-  // Read canonical value from cell (prefer data-sort)
   function getCellSortValue(row, colIndex) {
    const cell = row.children[colIndex];
    if (!cell) return '';
@@ -319,17 +313,13 @@ if ($dbConnectionTric instanceof PDO) {
     return Number.isFinite(n) ? n : Number.NEGATIVE_INFINITY;
    }
    if (type === 'date') {
-    // raw is expected to be a Unix timestamp in seconds (canonical)
     const n = Number(raw);
     if (Number.isFinite(n) && n > 0) return n;
-    // fallback: try parsing as a date string (accepts "2025-09-09 - 22:53:14" too)
     const normalized = String(raw).replace(/\s*-\s*/, ' ');
     const parsedMs = Date.parse(normalized);
     if (!isNaN(parsedMs)) return Math.floor(parsedMs / 1000);
-    // last fallback
     return 0;
    }
-   // string
    return String(raw).toLowerCase();
   }
 
@@ -343,7 +333,6 @@ if ($dbConnectionTric instanceof PDO) {
   }
 
   function sortByColumn(colIndex, type, direction = 'asc', persist = true) {
-   // decorate
    const decorated = rows.map((row, idx) => {
     const raw = getCellSortValue(row, colIndex);
     const parsed = parseForType(raw, type);
@@ -396,7 +385,6 @@ if ($dbConnectionTric instanceof PDO) {
 
   rowLimitSelect.addEventListener('change', applyRowLimit);
 
-  // Apply saved sort if present
   if (saved.lastSort && Number.isInteger(saved.lastSort.colIndex)) {
    const idx = Number(saved.lastSort.colIndex);
    const dir = saved.lastSort.direction === 'desc' ? 'desc' : 'asc';
