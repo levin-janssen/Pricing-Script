@@ -11,7 +11,8 @@ if (file_exists($logFile)) {
         $tempFile = $logFile . '.tmp';
         exec(sprintf('tail -n %d %s > %s', $maxLines, escapeshellarg($logFile), escapeshellarg($tempFile)));
         rename($tempFile, $logFile);
-        chmod($logFile, 0640);
+        
+        chmod($logFile, 0666); 
     }
 }
 

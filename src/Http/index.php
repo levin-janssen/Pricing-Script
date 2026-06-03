@@ -235,7 +235,7 @@ require_once APP_ROOT . '/config/marketplaces.php';
             <h1>Pricing Manager</h1>
             <p class="subtitle">Zentrale Übersicht aller verfügbaren Tools, Marktplätze und Systemkonfigurationen.</p>
         </header>
-
+        
         <section class="section">
             <h2 class="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
