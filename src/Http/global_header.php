@@ -98,9 +98,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
         <div class="global-nav-divider"></div>
         
         <a href="search.php?country=DE" class="<?= ($current_page == 'search.php') ? 'active' : '' ?>">Produktübersicht</a>
+        <a href="fba_restock.php" class="<?= ($current_page == 'fba_restock.php') ? 'active' : '' ?>">FBA Restock</a>
         <a href="bestandsabweichungen.php" class="<?= ($current_page == 'bestandsabweichungen.php') ? 'active' : '' ?>">Bestandsabweichungen</a>
-        <a href="bestandsabweichungen_historie.php" class="<?= ($current_page == 'bestandsabweichungen_historie.php') ? 'active' : '' ?>">Bestands-Historie</a>
-        <a href="report.php" class="<?= ($current_page == 'report.php') ? 'active' : '' ?>">Verkaufs-Report</a>
+        <a href="bestandsabweichungen_historie.php" class="<?= ($current_page == 'bestandsabweichungen_historie.php') ? 'active' : '' ?>">Bestands-Verlauf</a>
+        <a href="report.php" class="<?= ($current_page == 'report.php') ? 'active' : '' ?>">Umsatz-Übersicht</a>
         <a href="pakete_infos.php" class="<?= ($current_page == 'pakete_infos.php') ? 'active' : '' ?>">Paket- & Versandinfos</a>
     </div>
 </div>

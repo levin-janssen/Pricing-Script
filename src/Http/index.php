@@ -236,7 +236,6 @@ require_once APP_ROOT . '/config/marketplaces.php';
             <p class="subtitle">Zentrale Übersicht aller verfügbaren Tools, Marktplätze und Systemkonfigurationen.</p>
         </header>
 
-        <!-- HAUPTFUNKTIONEN -->
         <section class="section">
             <h2 class="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -256,6 +255,20 @@ require_once APP_ROOT . '/config/marketplaces.php';
                         <div>
                             <div class="card-title">Produktübersicht</div>
                             <div class="card-desc">Suche, Details und Preisgrenzen für alle Produkte verwalten.</div>
+                        </div>
+                    </div>
+                </a>
+
+                <a href="fba_restock.php" class="card">
+                    <div class="card-header">
+                        <div class="icon-wrapper">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="card-title">FBA Restock Manager</div>
+                            <div class="card-desc">Überwache den FBA-Bestand und identifiziere kritische Nachfüll-Artikel.</div>
                         </div>
                     </div>
                 </a>
@@ -318,7 +331,6 @@ require_once APP_ROOT . '/config/marketplaces.php';
             </div>
         </section>
 
-        <!-- MARKETS -->
         <section class="section">
             <h2 class="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -355,7 +367,6 @@ require_once APP_ROOT . '/config/marketplaces.php';
             </div>
         </section>
 
-        <!-- ADMIN -->
         <section class="section">
             <h2 class="section-title">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
