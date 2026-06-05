@@ -8,7 +8,6 @@ require_once APP_ROOT . '/config/db_connection.php';
 
 // --- Parameter Handling ---
 $months = isset($_GET['months']) ? (int)$_GET['months'] : 12;
-$source = isset($_GET['source']) ? $_GET['source'] : 'all'; // 'all' oder 'amazon'
 $stock_filter = isset($_GET['stock']) ? $_GET['stock'] : 'zero'; // 'zero', 'in_stock' oder 'all'
 
 if (!in_array($months, [1, 3, 6, 12, 24])) {
@@ -53,19 +52,16 @@ try {
         $localStocks[$row['produktid']] = (int)$row['local_stock'];
     }
 
-    // 3. Verkäufe im Zeitraum abrufen
+    // 3. Verkäufe im Zeitraum abrufen (Nur FBA-Artikel, erkennbar an werbekennzeichen = 8)
     $sqlSales = "
         SELECT T1.produktid, SUM(T1.anzahl) as sales
         FROM bestellungen_positionen T1
+        JOIN bestellungen T2 ON T1.bestellungsid = T2.id
+        WHERE T1.datum >= :start_date 
+          AND T2.werbekennzeichen = 8
+        GROUP BY T1.produktid 
+        HAVING sales > 0
     ";
-    if ($source === 'amazon') {
-        $sqlSales .= " JOIN bestellungen T2 ON T1.bestellungsid = T2.id ";
-    }
-    $sqlSales .= " WHERE T1.datum >= :start_date ";
-    if ($source === 'amazon') {
-        $sqlSales .= " AND T2.werbekennzeichen IN (2,8) "; 
-    }
-    $sqlSales .= " GROUP BY T1.produktid HAVING sales > 0 ";
     
     $stmtSales = $dbConnectionTric->prepare($sqlSales);
     $stmtSales->execute([':start_date' => $date_start]);
@@ -342,15 +338,15 @@ function h(string $value): string {
             <div class="preset-row">
                 <span style="font-size: 0.85rem; font-weight: 600; color: var(--muted); margin-top: 6px; margin-right: 10px;">Schnellfilter:</span>
                 
-                <button type="button" class="btn-preset" onclick="applyPreset(12, 'amazon', 'in_stock', 6, 'asc', 'all')">
+                <button type="button" class="btn-preset" onclick="applyPreset(12, 'in_stock', 6, 'asc', 'all')">
                     🔥 Reichweite
                 </button>
                 
-                <button type="button" class="btn-preset" onclick="applyPreset(12, 'amazon', 'all', 3, 'desc', 'under_30')">
+                <button type="button" class="btn-preset" onclick="applyPreset(12, 'all', 3, 'desc', 'under_30')">
                     ⚠️ Kritisch (0 - 30 Tage)
                 </button>
                 
-                <button type="button" class="btn-preset" onclick="applyPreset(12, 'all', 'zero', 3, 'desc', 'all')">
+                <button type="button" class="btn-preset" onclick="applyPreset(12, 'zero', 3, 'desc', 'all')">
                     🚨 Out of Stock 
                 </button>
             </div>
@@ -382,14 +378,6 @@ function h(string $value): string {
                             <option value="6" <?= $months === 6 ? 'selected' : '' ?>>Letzte 6 Monate</option>
                             <option value="12" <?= $months === 12 ? 'selected' : '' ?>>Letzte 12 Monate</option>
                             <option value="24" <?= $months === 24 ? 'selected' : '' ?>>Letzte 24 Monate</option>
-                        </select>
-                    </div>
-                    
-                    <div class="field">
-                        <label for="source">Verkaufsquelle (DB)</label>
-                        <select name="source" id="source">
-                            <option value="all" <?= $source === 'all' ? 'selected' : '' ?>>Alle Verkäufe</option>
-                            <option value="amazon" <?= $source === 'amazon' ? 'selected' : '' ?>>Nur Amazon</option>
                         </select>
                     </div>
                     
@@ -512,25 +500,122 @@ function h(string $value): string {
         const iconEyeOff = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 18px; height: 18px;"><path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 1-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>`;
         const iconEyeOn = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 18px; height: 18px;"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>`;
 
-        rows.forEach((row, index) => row.dataset.originalIndex = index);
+        // UI Restore
+        uiRunwaySelect.value = uiState.runwayFilter;
+        toggleIgnoredCheckbox.checked = uiState.showIgnored;
+        toggleLocalCheckbox.checked = uiState.showLocal;
 
-        function saveUIState() {
-            uiState.showIgnored = toggleIgnoredCheckbox.checked;
-            uiState.showLocal = toggleLocalCheckbox.checked;
-            uiState.runwayFilter = uiRunwaySelect.value;
-            localStorage.setItem(UI_STATE_KEY, JSON.stringify(uiState));
+        function updateIcons() {
+            rows.forEach(row => {
+                const sku = row.dataset.sku;
+                const btn = row.querySelector('.ignore-btn');
+                if (ignoredSkus.includes(sku)) {
+                    btn.innerHTML = iconEyeOff;
+                    btn.title = "Einblenden";
+                    row.classList.add('sku-ignored');
+                } else {
+                    btn.innerHTML = iconEyeOn;
+                    btn.title = "Ausblenden";
+                    row.classList.remove('sku-ignored');
+                }
+            });
         }
 
-        // --- PRESET LOGIC ---
-        // Parameter: Monate, Quelle, Bestand, Sortierungsspalte, Sortierungsrichtung, JS-Reichweiten-Filter
-        function applyPreset(months, source, stock, sortCol, sortDir, runwayFilter = 'all') {
+        window.toggleIgnore = function(sku) {
+            if (ignoredSkus.includes(sku)) {
+                ignoredSkus = ignoredSkus.filter(s => s !== sku);
+            } else {
+                ignoredSkus.push(sku);
+            }
+            localStorage.setItem(IGNORE_KEY, JSON.stringify(ignoredSkus));
+            updateIcons();
+            applyFilters();
+        };
+
+        function applyFilters() {
+            const searchTerm = searchInput.value.toLowerCase();
+            const runwayTerm = uiRunwaySelect.value;
+            const showIgnored = toggleIgnoredCheckbox.checked;
+            const showLocal = toggleLocalCheckbox.checked;
+
+            uiState.showIgnored = showIgnored;
+            uiState.showLocal = showLocal;
+            uiState.runwayFilter = runwayTerm;
+            localStorage.setItem(UI_STATE_KEY, JSON.stringify(uiState));
+
+            // Toggle Local Column
+            document.querySelectorAll('.col-local').forEach(el => {
+                el.style.display = showLocal ? 'table-cell' : 'none';
+            });
+
+            let visibleCount = 0;
+
+            rows.forEach(row => {
+                const text = row.innerText.toLowerCase();
+                const runwayDays = parseFloat(row.dataset.runway);
+                const isIgnored = ignoredSkus.includes(row.dataset.sku);
+                
+                let matchesSearch = text.includes(searchTerm);
+                let matchesRunway = true;
+
+                if (runwayTerm === 'out') matchesRunway = runwayDays === 0;
+                else if (runwayTerm === 'under_30') matchesRunway = runwayDays <= 30;
+                else if (runwayTerm === 'critical') matchesRunway = runwayDays > 0 && runwayDays <= 13;
+                else if (runwayTerm === 'low') matchesRunway = runwayDays >= 14 && runwayDays <= 30;
+                else if (runwayTerm === 'good') matchesRunway = runwayDays > 30 && runwayDays !== 999999;
+
+                if (!showIgnored && isIgnored) {
+                    matchesSearch = false;
+                }
+
+                if (matchesSearch && matchesRunway) {
+                    row.classList.remove('hidden-row');
+                    visibleCount++;
+                } else {
+                    row.classList.add('hidden-row');
+                }
+            });
+
+            countDisplay.innerText = visibleCount;
+        }
+
+        function sortByColumn(index, type, direction, saveState = true) {
+            if (saveState) {
+                uiState.sortCol = index;
+                uiState.sortDir = direction;
+                localStorage.setItem(UI_STATE_KEY, JSON.stringify(uiState));
+            }
+
+            headers.forEach(h => { h.classList.remove('sort-asc', 'sort-desc'); });
+            headers[index].classList.add(direction === 'asc' ? 'sort-asc' : 'sort-desc');
+
+            rows.sort((a, b) => {
+                let valA = a.children[index].dataset.sort;
+                let valB = b.children[index].dataset.sort;
+                
+                if (type === 'number') {
+                    valA = parseFloat(valA) || 0;
+                    valB = parseFloat(valB) || 0;
+                } else {
+                    valA = valA.toString().toLowerCase();
+                    valB = valB.toString().toLowerCase();
+                }
+
+                if (valA < valB) return direction === 'asc' ? -1 : 1;
+                if (valA > valB) return direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            rows.forEach(row => tbody.appendChild(row));
+        }
+
+        function applyPreset(months, stock, sortCol, sortDir, runwayFilter = 'all') {
             uiState.sortCol = sortCol;
             uiState.sortDir = sortDir;
             uiState.runwayFilter = runwayFilter; 
             localStorage.setItem(UI_STATE_KEY, JSON.stringify(uiState));
 
             document.getElementById('months').value = months;
-            document.getElementById('source').value = source;
             document.getElementById('stock').value = stock;
 
             const formData = new FormData(document.getElementById('php-filter-form'));
@@ -539,113 +624,19 @@ function h(string $value): string {
             document.getElementById('php-filter-form').submit();
         }
 
-        function sortByColumn(colIndex, type, direction = 'asc', persist = true) {
-            const decorated = rows.map(row => {
-                const cell = row.children[colIndex];
-                let raw = cell.dataset.sort !== undefined ? cell.dataset.sort : cell.textContent.trim();
-                let parsed = type === 'number' ? parseFloat(raw) : raw.toLowerCase();
-                if (type === 'number' && isNaN(parsed)) parsed = direction === 'asc' ? Infinity : -Infinity;
-                return { row, value: parsed, orig: parseInt(row.dataset.originalIndex) };
-            });
-
-            decorated.sort((A, B) => {
-                if (type === 'number') {
-                    if (A.value !== B.value) return direction === 'asc' ? A.value - B.value : B.value - A.value;
-                } else {
-                    const cmp = A.value.localeCompare(B.value, 'de', { numeric: true });
-                    if (cmp !== 0) return direction === 'asc' ? cmp : -cmp;
-                }
-                return A.orig - B.orig;
-            });
-
-            rows = decorated.map(d => d.row);
-            rows.forEach(r => tbody.appendChild(r));
-
-            headers.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
-            headers[colIndex].classList.add(direction === 'asc' ? 'sort-asc' : 'sort-desc');
-
-            if (persist) {
-                uiState.sortCol = colIndex;
-                uiState.sortDir = direction;
-                saveUIState();
-            }
-        }
-
-        headers.forEach((th, idx) => {
-            th.addEventListener('click', () => {
-                if(th.classList.contains('no-sort')) return;
-                const type = th.dataset.type || 'string';
-                const asc = th.classList.contains('sort-asc');
-                sortByColumn(idx, type, asc ? 'desc' : 'asc');
-            });
-        });
-
-        function toggleIgnore(sku) {
-            if (ignoredSkus.includes(sku)) {
-                ignoredSkus = ignoredSkus.filter(s => s !== sku);
-            } else {
-                ignoredSkus.push(sku);
-            }
-            localStorage.setItem(IGNORE_KEY, JSON.stringify(ignoredSkus));
-            applyFilters();
-        }
-
-        function applyFilters() {
-            saveUIState();
-            
-            const searchTerm = searchInput.value.toLowerCase();
-            const showIgnored = toggleIgnoredCheckbox.checked;
-            const showLocal = toggleLocalCheckbox.checked;
-            const rwFilter = uiRunwaySelect.value;
-            let visibleCount = 0;
-
-            document.querySelectorAll('.col-local').forEach(el => {
-                el.style.display = showLocal ? '' : 'none';
-            });
-
-            rows.forEach(row => {
-                let show = true;
-                const sku = row.dataset.sku;
-                const text = row.textContent.toLowerCase();
-                const runwayDays = parseFloat(row.dataset.runway);
-                const isIgnored = ignoredSkus.includes(sku);
-
-                if (searchTerm && !text.includes(searchTerm)) show = false;
-
-                // JS Reichweiten-Filter anwenden
-                if (rwFilter === 'out' && runwayDays > 0) show = false;
-                if (rwFilter === 'under_30' && runwayDays > 30) show = false; // NEUER FILTER 0-30 Tage
-                if (rwFilter === 'critical' && (runwayDays === 0 || runwayDays > 13)) show = false;
-                if (rwFilter === 'low' && (runwayDays < 14 || runwayDays > 30)) show = false;
-                if (rwFilter === 'good' && runwayDays <= 30) show = false;
-
-                const btn = row.querySelector('.ignore-btn');
-                if (isIgnored) {
-                    row.classList.add('sku-ignored');
-                    if(btn) { btn.title = 'Wieder einblenden'; btn.innerHTML = iconEyeOn; }
-                    if (!showIgnored) show = false;
-                } else {
-                    row.classList.remove('sku-ignored');
-                    if(btn) { btn.title = 'Ausblenden'; btn.innerHTML = iconEyeOff; }
-                }
-
-                if (show) {
-                    row.classList.remove('hidden-row');
-                    visibleCount++;
-                } else {
-                    row.classList.add('hidden-row');
-                }
-            });
-
-            countDisplay.textContent = visibleCount;
-        }
-
         document.addEventListener('DOMContentLoaded', () => {
-            toggleIgnoredCheckbox.checked = uiState.showIgnored;
-            toggleLocalCheckbox.checked = uiState.showLocal;
-            uiRunwaySelect.value = uiState.runwayFilter;
+            updateIcons();
 
-            searchInput.addEventListener('keyup', applyFilters);
+            headers.forEach((th, index) => {
+                if (th.classList.contains('no-sort')) return;
+                th.addEventListener('click', () => {
+                    const type = th.dataset.type;
+                    const isAsc = th.classList.contains('sort-asc');
+                    sortByColumn(index, type, isAsc ? 'desc' : 'asc');
+                });
+            });
+
+            searchInput.addEventListener('input', applyFilters);
             uiRunwaySelect.addEventListener('change', applyFilters);
             toggleIgnoredCheckbox.addEventListener('change', applyFilters);
             toggleLocalCheckbox.addEventListener('change', applyFilters);
