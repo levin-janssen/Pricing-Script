@@ -12,6 +12,21 @@ if (file_exists(APP_ROOT . '/config/load_env.php')) {
     require_once APP_ROOT . '/config/load_env.php';
 }
 
+$lifetime = 7 * 24 * 60 * 60; // 7 Tage
+
+// 1. Session-Cookie-Parameter modern setzen
+// Die Angabe 'path' => '/' ist wichtig, damit das Cookie überall gültig ist
+session_set_cookie_params([
+    'lifetime' => $lifetime,
+    'path' => '/',
+    'secure' => false,      // Auf 'true' setzen, wenn du HTTPS verwendest (empfohlen!)
+    'httponly' => true,     // Schützt vor XSS-Angriffen
+    'samesite' => 'Lax'     // Hilft gegen CSRF
+]);
+
+// 2. Serverseitige Lebensdauer (Garbage Collector) anpassen
+ini_set('session.gc_maxlifetime', $lifetime);
+
 // Den Namen der aktuell aufgerufenen Datei herausfinden (z. B. "pricing.php")
 $current_script = basename($_SERVER['SCRIPT_NAME']);
 
@@ -72,7 +87,7 @@ if (!in_array($current_script, $excluded_scripts) && !$is_cli) {
             </head>
             <body>
                 <div class="login-container">
-                    <h3>Geschützter Bereich</h3>
+                    <h3>Passwortgeschützter Bereich</h3>
                     <?php if (!empty($error_msg)) echo "<div class='error'>$error_msg</div>"; ?>
                     <form method="POST" action="">
                         <input type="password" name="login_password" placeholder="Passwort eingeben" required autofocus>
