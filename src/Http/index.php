@@ -705,11 +705,55 @@ require_once APP_ROOT . '/config/marketplaces.php';
         .marketplace-img { width: 32px; height: 32px; object-fit: contain; border-radius: 4px; box-shadow: var(--shadow-sm); }
 
         @media (max-width: 768px) {
-            body { padding: 24px 16px 40px; }
-            .grid { grid-template-columns: 1fr; }
-            .hero h1 { font-size: 2rem; }
+            /* General padding & typography adjustments */
+            body { padding: 24px 12px 60px; }
+            .hero h1 { font-size: 1.8rem; }
+            .hero .subtitle { font-size: 0.95rem; }
+            .section-title { font-size: 1.1rem; }
+            
+            /* Layout structural adjustments */
+            .grid { grid-template-columns: 1fr; gap: 16px; }
             .search-bar-row { flex-direction: column; }
-            .btn-primary { width: 100%; }
+            .btn-primary { width: 100%; height: 54px; }
+            .quick-search-input { height: 54px; font-size: 1rem; }
+            
+            /* Quick Search Adjustments */
+            .quick-search-panel { padding: 16px; }
+            .qs-grid { grid-template-columns: 1fr; gap: 16px; }
+            .qs-card { padding: 12px; }
+            
+            /* Table Horizontal Scroll fix */
+            .qs-buybox-details {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                margin: 0 -12px; /* Pulls the scroll out to the edges */
+                padding: 0 12px;
+            }
+            .qs-mini-table { min-width: 400px; } /* Forces scroll instead of squishing text */
+            
+            /* Stack orders and links naturally */
+            .qs-order-item { 
+                flex-direction: column; 
+                align-items: flex-start; 
+                gap: 8px; 
+            }
+            .qs-order-item > div:last-child {
+                text-align: left; /* Aligns the date/badge left on mobile */
+            }
+            .qs-links-area { flex-direction: column; }
+            .qs-link { 
+                width: 100%; 
+                justify-content: center; 
+                text-align: center; 
+                padding: 12px;
+            }
+            
+            /* Dashboard Card adjustments */
+            .card { padding: 16px; gap: 12px; }
+            .card-header { gap: 12px; }
+            .icon-wrapper { width: 44px; height: 44px; }
+            .icon-wrapper svg { width: 22px; height: 22px; }
+            .card-title { font-size: 1.05rem; }
         }
     </style>
 </head>

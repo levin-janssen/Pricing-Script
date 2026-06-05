@@ -501,12 +501,31 @@ $db_error = !isset($marketplaces[$current_marketplace_code]) ? "Fehler: Unbekann
         }
 
         @media (max-width: 768px) {
-            body { padding: 24px 16px 40px; }
-            .hero { flex-direction: column; align-items: flex-start; gap: 20px; }
-            .hero-stats { width: 100%; }
-            .stat-card { flex: 1; }
-            .actions-group { flex-direction: column; width: 100%; }
-            .btn-primary, .btn-ghost { width: 100%; }
+            body { padding: 24px 12px 60px; }
+            
+            /* Hero area stacking */
+            .hero { flex-direction: column; align-items: stretch; gap: 20px; }
+            .hero-text h1 { font-size: 1.8rem; }
+            .hero-stats { flex-direction: column; width: 100%; gap: 12px; }
+            .stat-card { width: 100%; min-width: 0; }
+            
+            /* Buttons stretch to full width */
+            .actions-group { flex-direction: column; width: 100%; gap: 12px; }
+            .btn-primary, .btn-ghost { width: 100%; height: 50px; }
+            
+            /* Panel and inputs */
+            .panel { padding: 16px; margin-bottom: 16px; }
+            .filter-grid { grid-template-columns: 1fr; gap: 12px; }
+            input[type="text"], select { height: 50px; font-size: 1rem; }
+            
+            /* Table scroll fix (pulls table to the edges of the phone screen) */
+            .table-wrap { 
+                margin: 0 -12px; 
+                border-radius: 0; 
+                border-left: none; 
+                border-right: none; 
+            }
+            th, td { padding: 12px 16px; }
         }
     </style>
 </head>

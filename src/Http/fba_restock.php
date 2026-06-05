@@ -320,6 +320,38 @@ function h(string $value): string {
         .btn-icon:hover { background: var(--surface-soft); color: var(--ink); border-color: var(--muted-light); }
         
         .alert { padding: 12px 16px; border-radius: var(--radius-sm); font-size: 0.95rem; font-weight: 500; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; margin-bottom: 24px; }
+
+        @media (max-width: 768px) {
+            /* General padding */
+            body { padding: 24px 12px 60px; }
+            
+            /* Hero area stacking */
+            .hero { flex-direction: column; align-items: stretch; gap: 20px; }
+            .hero-text h1 { font-size: 1.8rem; }
+            .hero-stats { flex-direction: column; width: 100%; gap: 12px; }
+            .stat-card { width: 100%; min-width: 0; }
+            
+            /* Panels and forms */
+            .panel { padding: 16px; margin-bottom: 16px; }
+            .filter-grid { grid-template-columns: 1fr; gap: 12px; }
+            .options-row { flex-direction: column; align-items: flex-start; gap: 12px; }
+            
+            /* Preset buttons (Schnellfilter) */
+            .preset-row { flex-direction: column; align-items: stretch; }
+            .btn-preset { width: 100%; height: 46px; justify-content: center; }
+            
+            /* Input touch targets */
+            input[type="text"], select { height: 50px; font-size: 1rem; }
+            
+            /* Table scroll fix (pulls table to the edges of the phone screen) */
+            .table-wrap { 
+                margin: 0 -12px; 
+                border-radius: 0; 
+                border-left: none; 
+                border-right: none; 
+            }
+            th, td { padding: 12px 16px; }
+        }
     </style>
 </head>
 <body>

@@ -441,18 +441,39 @@ $vendor = fetchTableData($pdo, $vendorSql, $orderStmt, $marketplaces);
             text-decoration: underline;
         }
 
-        @media (max-width: 1200px) {
-            .dashboard-grid { grid-template-columns: 1fr; }
-            .kpi-sidebar {
-                flex-direction: row;
-                flex-wrap: wrap;
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            }
-        }
         @media (max-width: 768px) {
-            body { padding: 24px 16px 40px; }
-            .kpi-sidebar { grid-template-columns: 1fr; }
+            body { padding: 24px 12px 60px; }
+            
+            /* Hero & Stats */
+            .hero { flex-direction: column; align-items: stretch; gap: 20px; }
+            .hero-text h1 { font-size: 1.8rem; }
+            .hero-stats { flex-direction: column; width: 100%; gap: 12px; }
+            .stat-card { width: 100%; flex: none; }
+            
+            /* Panels and inputs */
+            .panel { padding: 16px; margin-bottom: 16px; }
+            .filter-grid { grid-template-columns: 1fr; gap: 12px; }
+            input[type="text"], input[type="date"], select { height: 50px; font-size: 1rem; }
+            button, .btn-primary, .btn-ghost { width: 100%; height: 50px; justify-content: center; margin-top: 8px; }
+            
+            /* Table edge-to-edge */
+            .table-wrap { 
+                margin: 0 -12px; 
+                border-radius: 0; 
+                border-left: none; 
+                border-right: none; 
+            }
+            th, td { padding: 12px 16px; }
+            
+            /* Pagination optimized for touch */
+            .pagination { flex-wrap: wrap; justify-content: center; gap: 8px; padding: 16px 0; }
+            .pagination a, .pagination span { 
+                height: 44px; 
+                min-width: 44px; 
+                display: flex; 
+                align-items: center; 
+                justify-content: center; 
+            }
         }
     </style>
 </head>

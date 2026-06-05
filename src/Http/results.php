@@ -392,7 +392,7 @@ if (empty($db_error) && !empty($selectedAsin)) {
         }
 
         .page {
-            max-width: 80vw;
+            max-width: 1400px;
             margin: 0 auto;
         }
 
@@ -649,17 +649,34 @@ if (empty($db_error) && !empty($selectedAsin)) {
         .alert.success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
         .alert.info { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
 
-        @media (max-width: 1024px) {
-            .hero { flex-direction: column; }
-            .hero-stats { width: 100%; justify-content: flex-start; }
-            .stat-card { flex: 1 1 calc(50% - 16px); max-width: none; }
-        }
-        
-        @media (max-width: 600px) {
-            .stat-card { flex: 1 1 100%; }
-            .actions-group { flex-direction: column; width: 100%; }
-            .actions-group > * { width: 100%; }
-            .settings-grid { grid-template-columns: 1fr; }
+        @media (max-width: 768px) {
+            body { padding: 24px 12px 60px; }
+            .page { width: 100%; max-width: 100%; }
+            
+            /* Hero area stacking */
+            .hero { flex-direction: column; align-items: stretch; gap: 20px; }
+            .hero-text h1 { font-size: 1.8rem; flex-wrap: wrap; }
+            .hero-text .subtitle { font-size: 1rem; }
+            
+            /* Actions and buttons */
+            .actions-group { flex-direction: column; width: 100%; gap: 12px; }
+            .actions-group form, .actions-group .btn-danger { width: 100%; }
+            .btn-primary, .btn-ghost, .btn-danger { width: 100%; height: 50px; }
+            
+            /* Stats columns */
+            .hero-stats { flex-direction: column; width: 100%; gap: 12px; }
+            .stat-card { max-width: 100%; width: 100%; flex: none; }
+            
+            /* Panels and forms */
+            .panel { padding: 16px; }
+            .chart-controls { flex-direction: column; gap: 12px; }
+            .settings-grid { grid-template-columns: 1fr; gap: 16px; }
+            
+            /* Input touch targets */
+            input[type="text"], input[type="number"], select { height: 50px; font-size: 1rem; }
+            
+            /* Chart height optimization for mobile */
+            .chart-container { height: 300px; }
         }
     </style>
 </head>

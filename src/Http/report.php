@@ -434,11 +434,41 @@ function getProductData(PDO $dbConnection, string $sku, int $days, string $sourc
 
         /* --- Responsive --- */
         @media (max-width: 768px) {
-            body { padding: 24px 16px 40px; }
-            .hero { flex-direction: column; align-items: flex-start; gap: 20px; }
-            .filter-actions { flex-direction: column; align-items: stretch; }
-            button { width: 100%; }
-            .hero-stats { flex-direction: column; }
+            body { padding: 24px 12px 60px; }
+            
+            /* Hero area & Stats */
+            .hero { flex-direction: column; align-items: stretch; gap: 20px; }
+            .hero-text h1 { font-size: 1.8rem; }
+            .hero-stats { flex-direction: column; width: 100%; gap: 12px; }
+            .stat-card { width: 100%; flex: none; }
+            
+            /* Panels and inputs */
+            .panel { padding: 16px; margin-bottom: 16px; }
+            .filter-grid { grid-template-columns: 1fr; gap: 12px; }
+            input[type="text"], input[type="date"], select { height: 50px; font-size: 1rem; }
+            
+            /* Buttons */
+            .filter-actions { flex-direction: column; align-items: stretch; gap: 12px; }
+            button, .btn-primary, .btn-ghost { width: 100%; height: 50px; justify-content: center; }
+            
+            /* Charts edge-to-edge */
+            .chart-wrap, .chart-container { 
+                height: 300px; 
+                padding: 12px; 
+                margin: 0 -12px 24px -12px; 
+                border-radius: 0; 
+                border-left: none; 
+                border-right: none; 
+            }
+
+            /* Table edge-to-edge */
+            .table-wrap { 
+                margin: 0 -12px; 
+                border-radius: 0; 
+                border-left: none; 
+                border-right: none; 
+            }
+            th, td { padding: 12px 16px; }
         }
     </style>
 </head>

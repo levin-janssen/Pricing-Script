@@ -933,13 +933,33 @@ function h(string $value): string
         .chart-tooltip .status.error { color: #fecaca; }
 
         @media (max-width: 768px) {
-            body { padding: 24px 16px 40px; }
-            .hero { flex-direction: column; align-items: flex-start; gap: 20px; }
-            .hero-stats { width: 100%; }
-            .stat-card { flex: 1; }
-            .filter-actions { flex-direction: column; align-items: stretch; }
-            button, .ghost { width: 100%; }
-            .perf-flow { columns: 1 240px; }
+            body { padding: 24px 12px 60px; }
+            
+            /* Hero area */
+            .hero { flex-direction: column; align-items: stretch; gap: 16px; }
+            .hero h1 { font-size: 1.8rem; }
+            
+            /* Toolbar & Controls */
+            .panel { padding: 16px; }
+            .toolbar, .controls { flex-direction: column; align-items: stretch; gap: 12px; }
+            .toolbar select, .controls select, .toolbar button, .controls button, .btn-primary, .btn-ghost, .btn-danger { 
+                width: 100%; 
+                height: 50px; 
+                font-size: 1rem; 
+                justify-content: center;
+            }
+            
+            /* Log output edge-to-edge and horizontally scrollable */
+            .log-container, .log-output, pre { 
+                margin: 0 -12px; 
+                border-radius: 0; 
+                border-left: none; 
+                border-right: none; 
+                padding: 12px;
+                font-size: 0.85rem; /* Etwas kleinerer Text für bessere Lesbarkeit auf Mobile */
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
         }
     </style>
 </head>

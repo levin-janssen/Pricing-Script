@@ -500,8 +500,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $message_type !== 'error') {
         }
 
         @media (max-width: 768px) {
-            .grid-2, .grid-3 { grid-template-columns: 1fr; }
-            .panel { padding: 20px; }
+            body { padding: 24px 12px 60px; }
+            .hero h1 { font-size: 1.8rem; }
+            
+            /* Panel and Grid stacking */
+            .panel { padding: 16px; }
+            .grid-2, .grid-3 { grid-template-columns: 1fr; gap: 16px; }
+            
+            /* Navigation and Buttons */
+            .top-nav { margin-bottom: 16px; }
+            .btn-ghost { width: 100%; height: 50px; }
+            .btn-primary { width: 100%; height: 50px; margin-top: 16px; }
+            
+            /* Input touch targets */
+            input[type="text"], input[type="number"], select { height: 50px; font-size: 1rem; }
+            .alert { padding: 12px 16px; flex-direction: column; align-items: flex-start; gap: 8px; }
         }
     </style>
 </head>

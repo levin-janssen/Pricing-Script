@@ -514,28 +514,46 @@ function formatValue($value): string
         }
 
         @media (max-width: 768px) {
-            body {
-                padding: 24px 16px 40px;
+            body { padding: 24px 12px 60px; }
+            
+            /* Topbar and Header */
+            .header-text h1 { font-size: 1.8rem; }
+            .topbar { margin-bottom: 20px; }
+            
+            /* Panels and Inputs */
+            .panel { padding: 16px; }
+            .filter-grid { grid-template-columns: 1fr; gap: 12px; }
+            input[type="text"], select { height: 50px; font-size: 1rem; }
+            button { width: 100%; height: 50px; margin-top: 8px; }
+            
+            /* Stats */
+            .hero-stats { flex-direction: column; width: 100%; gap: 12px; }
+            .stat-card { width: 100%; flex: none; }
+            
+            /* Chart controls and display */
+            .toolbar { flex-direction: column; align-items: stretch; gap: 12px; }
+            .toolbar-group { width: 100%; flex-direction: column; align-items: stretch; }
+            .toolbar-group select, .ghost-button { width: 100%; height: 50px; flex: none; }
+            .toolbar-group .field { flex-direction: column !important; align-items: flex-start !important; }
+            
+            /* Chart stretches edge-to-edge */
+            .chart-wrap { 
+                height: 300px; 
+                padding: 12px; 
+                margin: 0 -12px 24px -12px; 
+                border-radius: 0; 
+                border-left: none; 
+                border-right: none; 
             }
-            .filter-grid {
-                grid-template-columns: 1fr;
+            
+            /* Table edge-to-edge */
+            .table-wrap { 
+                margin: 0 -12px; 
+                border-radius: 0; 
+                border-left: none; 
+                border-right: none; 
             }
-            button {
-                width: 100%;
-            }
-            .hero-stats {
-                flex-direction: column;
-            }
-            .toolbar {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-            .toolbar-group {
-                width: 100%;
-            }
-            .toolbar-group select, .ghost-button {
-                flex: 1;
-            }
+            th, td { padding: 12px 16px; }
         }
     </style>
 </head>
