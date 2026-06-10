@@ -4,7 +4,7 @@ header('Content-Type: text/html; charset=utf-8');
 date_default_timezone_set('Europe/Berlin');
 
 require_once APP_ROOT . '/config/db_connection.php';
-// Erwartet $dbConnectionTric (Tricoma) und $dbConnectionTric4Calc (Kalkulation)
+// Erwartet nur noch $dbConnectionTric (Tricoma). Die alte Kalkulations-DB ist raus.
 
 // --- Parameter Handling ---
 $months = isset($_GET['months']) ? (int)$_GET['months'] : 12;
@@ -23,8 +23,6 @@ $total_lost_potential = 0;
 
 try {
     // 1. ZUERST Verkäufe im Zeitraum abrufen
-    // OPTIMIERUNG: Die JOIN-Reihenfolge zwingt die DB, zuerst die (meist kleinere/gefilterte) 
-    // Bestellungen-Tabelle zu nutzen, bevor Millionen Bestellpositionen durchsucht werden.
     $sqlSales = "
         SELECT T1.produktid, SUM(T1.anzahl) as sales
         FROM bestellungen T2
@@ -48,10 +46,8 @@ try {
         $fbaStocks = [];
         $localStocks = [];
         $tricomaData = [];
-        $foundSkus = [];
 
-        // OPTIMIERUNG: Chunking. Wenn du tausende IDs hast, wird der Query-String gigantisch.
-        // Das Aufteilen in 1000er-Blöcke ist für den MySQL-Parser extrem viel schneller.
+        // OPTIMIERUNG: Chunking für die Datenbank
         $chunks = array_chunk($relevantProductIds, 1000);
 
         foreach ($chunks as $chunkIds) {
@@ -76,10 +72,7 @@ try {
                 }
             }
 
-            // 3. Tricoma Produktdaten bündeln
-            // OPTIMIERUNG: SQL-Pivoting (MAX + CASE). Anstatt für jeden Artikel 3 Zeilen 
-            // einzeln an PHP zu schicken und dort zu sortieren, baut MySQL die Tabelle 
-            // direkt zusammen. Reduziert die Datenmenge & Laufzeit um gut 60%.
+            // 3. Tricoma Produktdaten bündeln (Titel, SKU, ASIN aus produkte_felder_werte)
             $stmtFields = $dbConnectionTric->query("
                 SELECT 
                     produktid,
@@ -95,50 +88,43 @@ try {
             if ($stmtFields) {
                 while ($row = $stmtFields->fetch(PDO::FETCH_ASSOC)) {
                     $pid = $row['produktid'];
-                    $sku = trim((string)$row['sku']);
-                    
                     $tricomaData[$pid] = [
                         'title' => trim((string)$row['title']),
-                        'sku'   => $sku,
+                        'sku'   => trim((string)$row['sku']),
                         'asin'  => trim((string)$row['asin'])
                     ];
-                    
-                    if ($sku !== '') {
-                        $foundSkus[] = $sku;
-                    }
                 }
             }
-        }
 
-        // 4. Fallback aus tric4calc
-        $calcArticles = [];
-        $foundSkus = array_unique($foundSkus);
-        
-        if (!empty($foundSkus)) {
-            // Auch hier Chunking für die Strings
-            $skuChunks = array_chunk($foundSkus, 1000);
-            foreach ($skuChunks as $sChunk) {
-                $skuIn = implode(',', array_map(function($s) use ($dbConnectionTric4Calc) {
-                    return $dbConnectionTric4Calc->quote($s);
-                }, $sChunk));
-                
-                $stmtArtikel = $dbConnectionTric4Calc->query("
-                    SELECT sku, asin, artikelname 
-                    FROM Artikel 
-                    WHERE sku IN ($skuIn)
-                ");
-                
-                if ($stmtArtikel) {
-                    while ($row = $stmtArtikel->fetch(PDO::FETCH_ASSOC)) {
-                        $safeSku = strtolower(trim((string)$row['sku']));
-                        $calcArticles[$safeSku] = $row;
+            // 4. NEUER FALLBACK: ASIN aus amazon_produkte_daten laden
+            // Ist performanter als ein Subselect über die SKU, da wir die IDs bereits haben.
+            $stmtAmazonAsin = $dbConnectionTric->query("
+                SELECT produktid, asin 
+                FROM amazon_produkte_daten 
+                WHERE produktid IN ($inClauseIds)
+            ");
+            
+            if ($stmtAmazonAsin) {
+                while ($row = $stmtAmazonAsin->fetch(PDO::FETCH_ASSOC)) {
+                    $pid = $row['produktid'];
+                    $fallbackAsin = trim((string)$row['asin']);
+                    
+                    if ($fallbackAsin !== '') {
+                        // Falls der Artikel in produkte_felder_werte gänzlich fehlte
+                        if (!isset($tricomaData[$pid])) {
+                            $tricomaData[$pid] = ['title' => '', 'sku' => '', 'asin' => ''];
+                        }
+                        
+                        // Wenn die ASIN in produkte_felder_werte leer war, setze den Fallback ein
+                        if (empty($tricomaData[$pid]['asin'])) {
+                            $tricomaData[$pid]['asin'] = $fallbackAsin;
+                        }
                     }
                 }
             }
         }
 
         // --- Daten zusammenführen ---
-        // (Dieser Teil bleibt exakt wie vorher, da er in PHP quasi in 0.01 Sekunden durchläuft)
         foreach ($salesData as $pid => $sales) {
             $sku = $tricomaData[$pid]['sku'] ?? null;
             if (!$sku) continue; 
@@ -154,11 +140,10 @@ try {
             if ($stock_filter === 'in_stock' && $fbaStock <= 0) continue;
 
             $localStock = $localStocks[$pid] ?? 0;
-            $tricomaTitle = $tricomaData[$pid]['title'] ?? null;
-            $tricomaAsin = $tricomaData[$pid]['asin'] ?? null;
-
-            $name = $tricomaTitle ?: ($calcArticles[$skuLower]['artikelname'] ?? '');
-            $asin = $tricomaAsin ?: ($calcArticles[$skuLower]['asin'] ?? '');
+            
+            // Name und ASIN ziehen (ohne alte tric4calc Abhängigkeiten)
+            $name = $tricomaData[$pid]['title'] ?? '';
+            $asin = $tricomaData[$pid]['asin'] ?? '';
 
             $avg_monthly = $sales / $months;
 
