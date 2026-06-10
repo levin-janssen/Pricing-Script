@@ -26,6 +26,7 @@ session_set_cookie_params([
 
 // 2. Serverseitige Lebensdauer (Garbage Collector) anpassen
 ini_set('session.gc_maxlifetime', $lifetime);
+ini_set('default_charset', 'UTF-8');
 
 // Den Namen der aktuell aufgerufenen Datei herausfinden (z. B. "pricing.php")
 $current_script = basename($_SERVER['SCRIPT_NAME']);
