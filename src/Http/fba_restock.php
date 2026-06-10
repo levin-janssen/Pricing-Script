@@ -337,6 +337,37 @@ function h(string $value): string {
             }
             th, td { padding: 12px 16px; }
         }
+        /* --- Summary Row Styling --- */
+        .table-summary-row {
+            background: #f1f5f9; /* Noch einen Tick dunkler als surface-soft zur Abgrenzung */
+            border-bottom: 2px solid var(--stroke);
+        }
+        .table-summary-row td {
+            padding: 12px 16px;
+            vertical-align: middle;
+        }
+        .summary-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            text-align: right;
+        }
+        .summary-value {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 6px;
+            background: var(--surface);
+            border: 1px dashed var(--muted-light);
+            color: var(--ink);
+            font-weight: 700;
+            font-size: 0.85rem;
+            box-shadow: var(--shadow-sm);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -447,8 +478,20 @@ function h(string $value): string {
         <div class="table-wrap">
             <table id="restockTable">
                 <thead>
+                    <tr class="table-summary-row" id="averageRow">
+                        <td colspan="3" class="summary-label">
+                            Durchschnitt:
+                        </td>
+                        <td><span class="summary-value" id="avgSales">-</span></td>
+                        <td><span class="summary-value" id="avgMonthly">-</span></td>
+                        <td><span class="summary-value" id="avgFba">-</span></td>
+                        <td><span class="summary-value" id="avgRunway">-</span></td>
+                        <td class="col-local"><span class="summary-value" id="avgLocal">-</span></td>
+                        <td></td>
+                    </tr>
                     <tr>
-                        <th data-type="string">ASIN</th> <th data-type="string">SKU</th> <th data-type="string">Produktname</th> <th data-type="number">Verkäufe (<?= $months ?>M)</th> <th data-type="number">Ø / Monat</th> <th data-type="number">FBA Bestand</th> <th data-type="number">Reichweite</th> <th data-type="number" class="col-local">Lokal</th> <th class="no-sort" style="text-align: right;">Aktion</th> </tr>
+                        <th data-type="string">ASIN</th> <th data-type="string">SKU</th> <th data-type="string">Produktname</th> <th data-type="number">Verkäufe (<?= $months ?>M)</th> <th data-type="number">Ø / Monat</th> <th data-type="number">FBA Bestand</th> <th data-type="number">Reichweite</th> <th data-type="number" class="col-local">Lokal</th> <th class="no-sort" style="text-align: right;">Aktion</th> 
+                    </tr>
                 </thead>
                 <tbody id="tableBody">
                     <?php foreach ($results as $item): ?>
@@ -625,7 +668,14 @@ function h(string $value): string {
             const showIgnored = toggleIgnoredCheckbox.checked;
             const showLocal = toggleLocalCheckbox.checked;
             const rwFilter = uiRunwaySelect.value;
+            
             let visibleCount = 0;
+            
+            // NEU: Variablen für die Summenbildung
+            let sumSales = 0;
+            let sumMonthly = 0;
+            let sumFba = 0;
+            let sumLocal = 0;
 
             document.querySelectorAll('.col-local').forEach(el => {
                 el.style.display = showLocal ? '' : 'none';
@@ -642,7 +692,7 @@ function h(string $value): string {
 
                 // JS Reichweiten-Filter anwenden
                 if (rwFilter === 'out' && runwayDays > 0) show = false;
-                if (rwFilter === 'under_30' && runwayDays > 30) show = false; // NEUER FILTER 0-30 Tage
+                if (rwFilter === 'under_30' && runwayDays > 30) show = false;
                 if (rwFilter === 'critical' && (runwayDays === 0 || runwayDays > 13)) show = false;
                 if (rwFilter === 'low' && (runwayDays < 14 || runwayDays > 30)) show = false;
                 if (rwFilter === 'good' && runwayDays <= 30) show = false;
@@ -660,12 +710,59 @@ function h(string $value): string {
                 if (show) {
                     row.classList.remove('hidden-row');
                     visibleCount++;
+                    
+                    // NEU: Werte der sichtbaren Zeilen addieren
+                    // Die Indizes (3, 4, 5, 7) entsprechen den Spalten in deiner Tabelle
+                    sumSales += parseFloat(row.children[3].dataset.sort || 0);
+                    sumMonthly += parseFloat(row.children[4].dataset.sort || 0);
+                    sumFba += parseFloat(row.children[5].dataset.sort || 0);
+                    sumLocal += parseFloat(row.children[7].dataset.sort || 0);
                 } else {
                     row.classList.add('hidden-row');
                 }
             });
 
             countDisplay.textContent = visibleCount;
+
+            // NEU: Durchschnitte berechnen und ins DOM schreiben
+            const formatter = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 });
+            
+            if (visibleCount > 0) {
+                document.getElementById('avgSales').textContent = formatter.format(sumSales / visibleCount);
+                document.getElementById('avgMonthly').textContent = '~' + formatter.format(sumMonthly / visibleCount);
+                document.getElementById('avgFba').textContent = formatter.format(sumFba / visibleCount);
+                document.getElementById('avgLocal').textContent = formatter.format(sumLocal / visibleCount);
+
+                // Aggregierte Reichweite berechnen (Gesamt FBA Bestand / Gesamt Ø Monatlich)
+                let avgRunwayText = '';
+                if (sumFba > 0) {
+                    if (sumMonthly > 0) {
+                        let monthsLeft = sumFba / sumMonthly;
+                        let daysLeft = monthsLeft * 30;
+                        
+                        if (monthsLeft >= 12) {
+                            avgRunwayText = formatter.format(monthsLeft / 12) + ' Jahre';
+                        } else if (monthsLeft >= 1) {
+                            avgRunwayText = formatter.format(monthsLeft) + ' Mon.';
+                        } else {
+                            avgRunwayText = Math.round(daysLeft) + ' Tage';
+                        }
+                    } else {
+                        avgRunwayText = '∞';
+                    }
+                } else {
+                    avgRunwayText = '0 Tage';
+                }
+                document.getElementById('avgRunway').textContent = avgRunwayText;
+                
+            } else {
+                // Fallback, wenn nichts gefunden wurde
+                document.getElementById('avgSales').textContent = '-';
+                document.getElementById('avgMonthly').textContent = '-';
+                document.getElementById('avgFba').textContent = '-';
+                document.getElementById('avgRunway').textContent = '-';
+                document.getElementById('avgLocal').textContent = '-';
+            }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
